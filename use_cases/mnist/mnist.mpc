@@ -1,0 +1,131 @@
+
+sfix.set_precision(f=16, k=40) 
+
+from transformers import AutoModel
+import numpy as np
+from Compiler.types import sfix, regint, sint
+from Compiler.library import print_ln
+from ExternalIO import *
+
+# Parameters used 
+PRECISION = 16
+SCALE = 2 ** PRECISION
+INPUT_SIZE = 28 * 28
+HIDDEN1 = 128
+HIDDEN2 = 128
+OUTPUT = 10
+
+# Hugging face model defined 
+model = AutoModel.from_pretrained("dacorvo/mnist-mlp", trust_remote_code=True)
+state_dict = model.state_dict()
+
+def to_numpy(t):
+    return t.detach().numpy().astype(np.float32)
+
+# Extract weights
+W1 = to_numpy(state_dict["input_layer.weight"]).T
+b1 = to_numpy(state_dict["input_layer.bias"])
+W2 = to_numpy(state_dict["mid_layer.weight"]).T
+b2 = to_numpy(state_dict["mid_layer.bias"])
+W3 = to_numpy(state_dict["output_layer.weight"]).T
+b3 = to_numpy(state_dict["output_layer.bias"])
+
+
+def quantize(mat):
+    return np.round(mat * SCALE).astype(np.int64)
+
+W1_q, b1_q = quantize(W1), quantize(b1)
+W2_q, b2_q = quantize(W2), quantize(b2)
+W3_q, b3_q = quantize(W3), quantize(b3)
+
+# Socket connection for inputs 
+port=regint(10000)
+listen(port)
+socket_id = regint()
+acceptclientconnection(socket_id, port)
+
+v_int = sint.read_from_socket(socket_id, INPUT_SIZE)
+
+# Convert to sfix array
+v = sfix.Array(INPUT_SIZE)
+for i in range(INPUT_SIZE):
+    # cast each sint to sfix (this preserves secret-shared integer into fixed-point)
+    v[i] = sfix(v_int[i])/ sfix(255)
+
+
+# Convert array to (1 x 784) matrix
+x = sfix.Matrix(1, INPUT_SIZE)
+for i in range(INPUT_SIZE):
+    x[0][i] = v[i]
+
+
+# Convert weights to sfix matrices (using quantized ints divided by SCALE)
+def const_matrix(mat):
+    rows, cols = mat.shape
+    m = sfix.Matrix(rows, cols)
+    for i in range(rows):
+        for j in range(cols):
+            m[i][j] = sfix(mat[i][j] / SCALE)
+    return m
+
+def const_vector_as_matrix(vec):
+    n = len(vec)
+    m = sfix.Matrix(1, n)
+    for j in range(n):
+        m[0][j] = sfix(vec[j] / SCALE)
+    return m
+
+# Weights quantized to sfix 
+W1_fix = const_matrix(W1_q)
+b1_fix = const_vector_as_matrix(b1_q)
+W2_fix = const_matrix(W2_q)
+b2_fix = const_vector_as_matrix(b2_q)
+W3_fix = const_matrix(W3_q)
+b3_fix = const_vector_as_matrix(b3_q)
+
+
+# Helper: ReLU and Argmax
+
+def relu(arr):
+    return [sfix.max(a, sfix(0)) for a in arr]
+
+def argmax(arr):
+    vals = [a.reveal() for a in arr]
+    max_idx = regint(0)
+    max_val = vals[0]
+    for i in range(1, len(vals)):
+        is_greater = vals[i] > max_val
+        max_val = is_greater.if_else(vals[i], max_val)
+        max_idx = is_greater.if_else(regint(i), max_idx)
+    return max_idx
+
+
+# Forward pass
+
+hidden1 = x.dot(W1_fix) + b1_fix
+hidden1_arr = relu(hidden1.to_array())
+
+hidden1_mat = sfix.Matrix(1, len(hidden1_arr))
+for j in range(len(hidden1_arr)):
+    hidden1_mat[0][j] = hidden1_arr[j]
+
+
+hidden2 = hidden1_mat.dot(W2_fix) + b2_fix   
+hidden2_arr = relu(hidden2.to_array())
+
+hidden2_mat = sfix.Matrix(1, len(hidden2_arr))
+for j in range(len(hidden2_arr)):
+    hidden2_mat[0][j] = hidden2_arr[j]
+
+out_mat = hidden2_mat.dot(W3_fix) + b3_fix   
+out = out_mat.to_array()
+
+pred_label = argmax(out)
+print_ln("Predicted label: %s", pred_label)
+
+# Sending the predicted label back over the socket as an integer:
+
+resp = sint.Array(1)
+resp[0] = pred_label.reveal() 
+sint.write_to_socket(socket_id, resp)
+
