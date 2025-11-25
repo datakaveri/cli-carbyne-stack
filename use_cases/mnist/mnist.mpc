@@ -75,13 +75,6 @@ def const_vector_as_matrix(vec):
         m[0][j] = sfix(vec[j] / SCALE)
     return m
 
-# Weights quantized to sfix 
-W1_fix = const_matrix(W1_q)
-b1_fix = const_vector_as_matrix(b1_q)
-W2_fix = const_matrix(W2_q)
-b2_fix = const_vector_as_matrix(b2_q)
-W3_fix = const_matrix(W3_q)
-b3_fix = const_vector_as_matrix(b3_q)
 
 
 # Helper: ReLU and Argmax
@@ -98,6 +91,16 @@ def argmax(arr):
         max_val = is_greater.if_else(vals[i], max_val)
         max_idx = is_greater.if_else(regint(i), max_idx)
     return max_idx
+
+
+
+# Weights quantized to sfix 
+W1_fix = const_matrix(W1_q)
+b1_fix = const_vector_as_matrix(b1_q)
+W2_fix = const_matrix(W2_q)
+b2_fix = const_vector_as_matrix(b2_q)
+W3_fix = const_matrix(W3_q)
+b3_fix = const_vector_as_matrix(b3_q)
 
 
 # Forward pass
