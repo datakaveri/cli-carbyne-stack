@@ -1,6 +1,5 @@
 
 sfix.set_precision(f=16, k=40) 
-
 from transformers import AutoModel
 import numpy as np
 from Compiler.types import sfix, regint, sint
@@ -23,12 +22,11 @@ state_dict = model.state_dict()
 def to_numpy(t):
     return t.detach().numpy().astype(np.float32)
 
-#S Scale up the weights and convert to int64
+# Scale up the weights and convert to int64
 def quantize(mat):
     return np.round(mat * SCALE).astype(np.int64)
 
 # Convert weights to sfix matrices (using quantized ints divided by SCALE)
-
 def const_matrix(mat):
     rows, cols = mat.shape
     m = sfix.Matrix(rows, cols)
@@ -46,7 +44,6 @@ def const_vector_as_matrix(vec):
 
 
 # Helper: ReLU and Argmax
-
 def relu(arr):
     return [sfix.max(a, sfix(0)) for a in arr]
 
@@ -81,7 +78,6 @@ port=regint(10000)
 listen(port)
 socket_id = regint()
 acceptclientconnection(socket_id, port)
-
 v_int = sint.read_from_socket(socket_id, INPUT_SIZE)
 
 # Convert to sfix array
@@ -90,12 +86,10 @@ for i in range(INPUT_SIZE):
     # cast each sint to sfix (this preserves secret-shared integer into fixed-point)
     v[i] = sfix(v_int[i])/ sfix(255)
 
-
 # Convert array to (1 x 784) matrix
 x = sfix.Matrix(1, INPUT_SIZE)
 for i in range(INPUT_SIZE):
     x[0][i] = v[i]
-
 
 # Weights quantized to sfix 
 W1_fix = const_matrix(W1_q)
@@ -105,16 +99,13 @@ b2_fix = const_vector_as_matrix(b2_q)
 W3_fix = const_matrix(W3_q)
 b3_fix = const_vector_as_matrix(b3_q)
 
-
 # Forward pass
-
 hidden1 = x.dot(W1_fix) + b1_fix
 hidden1_arr = relu(hidden1.to_array())
 
 hidden1_mat = sfix.Matrix(1, len(hidden1_arr))
 for j in range(len(hidden1_arr)):
     hidden1_mat[0][j] = hidden1_arr[j]
-
 
 hidden2 = hidden1_mat.dot(W2_fix) + b2_fix   
 hidden2_arr = relu(hidden2.to_array())
@@ -131,7 +122,6 @@ pred_label = argmax(out)
 print_ln("Predicted label: %s", pred_label)
 
 # Sending the predicted label back over the socket as an integer:
-
 resp = sint.Array(1)
 resp[0] = pred_label.reveal() 
 sint.write_to_socket(socket_id, resp)
