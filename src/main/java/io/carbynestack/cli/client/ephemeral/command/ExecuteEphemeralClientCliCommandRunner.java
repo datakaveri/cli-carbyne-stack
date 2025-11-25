@@ -42,6 +42,7 @@ public class ExecuteEphemeralClientCliCommandRunner
   public void run() throws CsCliRunnerException {
     System.out.println("Provide program to execute. Press Ctrl+D to submit.");
     ExecuteEphemeralClientCliCommandConfig c = this.getConfig();
+    System.out.println("Your inputs to ephemeral function are: " + c.getInputs());
     String code =
         readCodeFromStdIn()
             .getOrElseThrow(

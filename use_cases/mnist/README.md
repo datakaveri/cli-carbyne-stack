@@ -31,6 +31,10 @@ After running this you will have the input images, which can be copied to a text
 and on a seperate terminal- 
 ```bash 
 ./Player-Online.x -p 1 -N 2 mnist
+<<<<<<< HEAD
 ```
 
 
+=======
+```
+>>>>>>> aks_dev

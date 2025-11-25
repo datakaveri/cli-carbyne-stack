@@ -37,6 +37,7 @@ abstract class EphemeralClientCliCommandRunner<T extends EphemeralClientCliComma
       throws CsCliRunnerException, CsCliLoginException {
     Option<Map<EphemeralEndpoint, VcpToken>> tokens =
         getVcpTokens(configuration, config.getApplication());
+
     return config
         .getCustomClientFactory()
         .map(factory -> Try.success(factory.create(config)))

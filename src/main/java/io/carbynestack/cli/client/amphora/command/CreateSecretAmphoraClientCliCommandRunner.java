@@ -28,6 +28,9 @@ public class CreateSecretAmphoraClientCliCommandRunner
   @Override
   public void run() throws CsCliRunnerException {
     try {
+        System.out.println(this.getConfig().getSecrets());
+        System.out.println("big integer below");
+        System.out.println(this.getConfig().getSecrets().toArray(new BigInteger[0]));
       UUID result =
           this.getAmphoraClient()
               .createSecret(
