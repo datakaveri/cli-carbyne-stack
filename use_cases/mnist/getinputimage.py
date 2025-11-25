@@ -1,11 +1,8 @@
 import struct
 import numpy as np
 
-<<<<<<< HEAD
-#Download the dataset from kaggle and copy the correct path of your system
-=======
+
 # Download the dataset from Kaggle and add paths for that here
->>>>>>> aks_dev
 TEST_IMAGES = "/home/user/Downloads/archive/t10k-images-idx3-ubyte/t10k-images-idx3-ubyte"
 TEST_LABELS = "/home/user/Downloads/archive/t10k-labels-idx1-ubyte/t10k-labels-idx1-ubyte"
 
@@ -43,7 +40,4 @@ for i in range(START,END):
 
     print(f"\nImage {i+1}  Label: {label}")
     print(pixel_line)
-<<<<<<< HEAD
-=======
-    
->>>>>>> aks_dev
+

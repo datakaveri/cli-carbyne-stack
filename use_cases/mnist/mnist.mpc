@@ -19,47 +19,16 @@ OUTPUT = 10
 model = AutoModel.from_pretrained("dacorvo/mnist-mlp", trust_remote_code=True)
 state_dict = model.state_dict()
 
+# Convert extracted weights to float32
 def to_numpy(t):
     return t.detach().numpy().astype(np.float32)
 
-# Extract weights
-W1 = to_numpy(state_dict["input_layer.weight"]).T
-b1 = to_numpy(state_dict["input_layer.bias"])
-W2 = to_numpy(state_dict["mid_layer.weight"]).T
-b2 = to_numpy(state_dict["mid_layer.bias"])
-W3 = to_numpy(state_dict["output_layer.weight"]).T
-b3 = to_numpy(state_dict["output_layer.bias"])
-
-
+#S Scale up the weights and convert to int64
 def quantize(mat):
     return np.round(mat * SCALE).astype(np.int64)
 
-W1_q, b1_q = quantize(W1), quantize(b1)
-W2_q, b2_q = quantize(W2), quantize(b2)
-W3_q, b3_q = quantize(W3), quantize(b3)
-
-# Socket connection for inputs 
-port=regint(10000)
-listen(port)
-socket_id = regint()
-acceptclientconnection(socket_id, port)
-
-v_int = sint.read_from_socket(socket_id, INPUT_SIZE)
-
-# Convert to sfix array
-v = sfix.Array(INPUT_SIZE)
-for i in range(INPUT_SIZE):
-    # cast each sint to sfix (this preserves secret-shared integer into fixed-point)
-    v[i] = sfix(v_int[i])/ sfix(255)
-
-
-# Convert array to (1 x 784) matrix
-x = sfix.Matrix(1, INPUT_SIZE)
-for i in range(INPUT_SIZE):
-    x[0][i] = v[i]
-
-
 # Convert weights to sfix matrices (using quantized ints divided by SCALE)
+
 def const_matrix(mat):
     rows, cols = mat.shape
     m = sfix.Matrix(rows, cols)
@@ -93,6 +62,41 @@ def argmax(arr):
 
 
 
+# Extract weights
+W1 = to_numpy(state_dict["input_layer.weight"]).T
+b1 = to_numpy(state_dict["input_layer.bias"])
+W2 = to_numpy(state_dict["mid_layer.weight"]).T
+b2 = to_numpy(state_dict["mid_layer.bias"])
+W3 = to_numpy(state_dict["output_layer.weight"]).T
+b3 = to_numpy(state_dict["output_layer.bias"])
+
+# Quantize the weights and biases
+W1_q, b1_q = quantize(W1), quantize(b1)
+W2_q, b2_q = quantize(W2), quantize(b2)
+W3_q, b3_q = quantize(W3), quantize(b3)
+
+
+# Socket connection for inputs 
+port=regint(10000)
+listen(port)
+socket_id = regint()
+acceptclientconnection(socket_id, port)
+
+v_int = sint.read_from_socket(socket_id, INPUT_SIZE)
+
+# Convert to sfix array
+v = sfix.Array(INPUT_SIZE)
+for i in range(INPUT_SIZE):
+    # cast each sint to sfix (this preserves secret-shared integer into fixed-point)
+    v[i] = sfix(v_int[i])/ sfix(255)
+
+
+# Convert array to (1 x 784) matrix
+x = sfix.Matrix(1, INPUT_SIZE)
+for i in range(INPUT_SIZE):
+    x[0][i] = v[i]
+
+
 # Weights quantized to sfix 
 W1_fix = const_matrix(W1_q)
 b1_fix = const_vector_as_matrix(b1_q)
@@ -122,6 +126,7 @@ for j in range(len(hidden2_arr)):
 out_mat = hidden2_mat.dot(W3_fix) + b3_fix   
 out = out_mat.to_array()
 
+# Predicting the label
 pred_label = argmax(out)
 print_ln("Predicted label: %s", pred_label)
 
