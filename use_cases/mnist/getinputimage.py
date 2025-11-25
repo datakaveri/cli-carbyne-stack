@@ -1,11 +1,10 @@
 import struct
 import numpy as np
 
-# ------------------------
-# Correct paths for YOUR system
-# ------------------------
+#Download the dataset from kaggle and copy the correct path of your system
 TEST_IMAGES = "/home/user/Downloads/archive/t10k-images-idx3-ubyte/t10k-images-idx3-ubyte"
 TEST_LABELS = "/home/user/Downloads/archive/t10k-labels-idx1-ubyte/t10k-labels-idx1-ubyte"
+
 #total of 10,000 test images, we are downloading 10 as of now
 NUM_IMAGES = 10
 START = 0   
