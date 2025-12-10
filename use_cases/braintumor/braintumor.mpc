@@ -1,0 +1,576 @@
+# DISCLAIMER- this code is not ready, its giving compilation errors- too long 
+
+from Compiler.types import sfix, sint, regint
+from Compiler.library import print_ln, listen, acceptclientconnection
+from Compiler import ml as ml
+from ExternalIO import *
+import numpy as np
+import os
+
+
+# Fixed-point precision
+sfix.set_precision(f=16, k=40)
+PRECISION = 16
+SCALE = 2 ** PRECISION
+
+
+# Compile-time: try to download HF repo & load Keras model
+REPO_ID = "jawadskript/brain_tumor_detection_CNN_DeepLearning"  # change if needed
+model_file = None
+model_loaded = None
+try:
+    from huggingface_hub import snapshot_download
+    import tensorflow as tf
+    hf_available = True
+except Exception as e:
+    hf_available = False
+    tf = None
+    snapshot_download = None
+    print_ln("Warning: huggingface_hub/tensorflow not available at compile-time: %s", str(e))\
+if hf_available:
+    try:
+        repo_dir = snapshot_download(repo_id=REPO_ID)
+        # find .h5/.keras file or a file named "model" in repo root
+        for fname in os.listdir(repo_dir):
+            if fname.endswith(".h5") or fname.endswith(".keras"):
+                model_file = os.path.join(repo_dir, fname)
+                break
+        if model_file is None and "model" in os.listdir(repo_dir):
+            model_file = os.path.join(repo_dir, "model")
+        print_ln("HF repo downloaded to: %s ; model_file=%s", repo_dir, str(model_file))
+    except Exception as e:
+        model_file = None
+        print_ln("Warning: snapshot_download failed: %s", str(e))
+
+if model_file is not None and tf is not None:
+    try:
+        model_loaded = tf.keras.models.load_model(model_file, compile=False)
+        print_ln("Loaded Keras model with %s layers.", len(model_loaded.layers))
+    except Exception as e:
+        model_loaded = None
+        print_ln("Warning: could not load Keras model: %s", str(e))
+else:
+    if not hf_available:
+        print_ln("Info: huggingface_hub/tensorflow unavailable; skipping model auto-load.")
+    else:
+        print_ln("Info: no model file found in HF repo; skipping model auto-load.")
+
+# Default input dims (fallback)
+
+DEFAULT_H = 150
+DEFAULT_W = 150
+DEFAULT_C = 3
+
+INPUT_H = DEFAULT_H
+INPUT_W = DEFAULT_W
+INPUT_C = DEFAULT_C
+
+# auto-detect model input if loaded
+if model_loaded is not None:
+    try:
+        in_shape = model_loaded.input_shape
+        if isinstance(in_shape, list):
+            in_shape = in_shape[0]
+        if len(in_shape) == 4:
+            # common: (None, H, W, C) or (None, C, H, W)
+            maybe1 = (in_shape[1], in_shape[2], in_shape[3])
+            if (in_shape[1] is None or in_shape[1] in (DEFAULT_H, DEFAULT_W)) and (in_shape[2] in (DEFAULT_H, DEFAULT_W)):
+                INPUT_H = int(in_shape[1]) if in_shape[1] is not None else DEFAULT_H
+                INPUT_W = int(in_shape[2]) if in_shape[2] is not None else DEFAULT_W
+                INPUT_C = int(in_shape[3]) if in_shape[3] is not None else DEFAULT_C
+            else:
+                # assume (None, C, H, W)
+                INPUT_C = int(in_shape[1]) if in_shape[1] is not None else DEFAULT_C
+                INPUT_H = int(in_shape[2]) if in_shape[2] is not None else DEFAULT_H
+                INPUT_W = int(in_shape[3]) if in_shape[3] is not None else DEFAULT_W
+        elif len(in_shape) == 3:
+            # (H,W,C)
+            INPUT_H = int(in_shape[0]) if in_shape[0] is not None else DEFAULT_H
+            INPUT_W = int(in_shape[1]) if in_shape[1] is not None else DEFAULT_W
+            INPUT_C = int(in_shape[2]) if in_shape[2] is not None else DEFAULT_C
+        else:
+            print_ln("Warning: unexpected input_shape format: %s; falling back to %sx%sx%s", str(in_shape), DEFAULT_H, DEFAULT_W, DEFAULT_C)
+            INPUT_H, INPUT_W, INPUT_C = DEFAULT_H, DEFAULT_W, DEFAULT_C
+        print_ln("Model input detected as %s x %s x %s (H x W x C).", INPUT_H, INPUT_W, INPUT_C)
+    except Exception as e:
+        print_ln("Warning: failed to detect model input shape: %s; using default %sx%sx%s", str(e), DEFAULT_H, DEFAULT_W, DEFAULT_C)
+        INPUT_H, INPUT_W, INPUT_C = DEFAULT_H, DEFAULT_W, DEFAULT_C
+else:
+    print_ln("No model loaded at compile-time; defaulting input to %sx%sx%s", DEFAULT_H, DEFAULT_W, DEFAULT_C)
+
+INPUT_LEN = INPUT_H * INPUT_W * INPUT_C
+
+
+# Helpers: quantize and convert to sfix arrays
+
+def quantize_np(arr):
+    """Quantize float32 array to integer (scaled by SCALE)."""
+    return np.round(arr.astype(np.float64) * SCALE).astype(np.int64)
+
+def to_sfix_flat(np_q):
+    """Convert a numpy integer quantized array to an sfix.Array containing scaled sfix values (int/SCALE)."""
+    flat = np_q.flatten()
+    n = flat.size
+    arr = sfix.Array(n)
+    for i in range(n):
+        # convert integer q to sfix by dividing by SCALE using integer sfix division
+        arr[i] = sfix(int(flat[i])) / sfix(SCALE)
+    return arr, np_q.shape
+
+# Extract weights from model (first 3 convs, first 2 densest)
+
+conv_layers = []
+dense_layers = []
+
+if model_loaded is not None:
+    for layer in model_loaded.layers:
+        name = layer.__class__.__name__
+        if name == "Conv2D":
+            conv_layers.append(layer)
+            try:
+                w_shape = layer.get_weights()[0].shape
+                print_ln("Found Conv2D %s kernel_shape=%s", layer.name, str(w_shape))
+            except Exception:
+                pass
+        elif name == "Dense":
+            dense_layers.append(layer)
+            try:
+                W_shape = layer.get_weights()[0].shape
+                print_ln("Found Dense %s W_shape=%s", layer.name, str(W_shape))
+            except Exception:
+                pass
+
+# limit to what's in your architecture: 3 convs, 2 dense (if available)
+conv_q = []
+for i in range(min(3, len(conv_layers))):
+    w, b = conv_layers[i].get_weights()  # w: (kh, kw, in_ch, out_ch)
+    conv_q.append((quantize_np(w), quantize_np(b), w.shape))
+    print_ln("Quantized conv #%s shape %s", i+1, str(w.shape))
+
+dense_q = []
+for i in range(min(2, len(dense_layers))):
+    W, b = dense_layers[i].get_weights()  # W: (in_dim, out_dim)
+    dense_q.append((quantize_np(W), quantize_np(b), W.shape))
+    print_ln("Quantized dense #%s shape %s", i+1, str(W.shape))
+
+# Convert quantized numpy arrays -> sfix flattened constants for embedding in the program
+conv_sfix = []
+for (w_q, b_q, shape) in conv_q:
+    w_sfix, wshape = to_sfix_flat(w_q)
+    b_sfix, _ = to_sfix_flat(b_q)
+    conv_sfix.append((w_sfix, b_sfix, shape))
+
+dense_sfix = []
+for (W_q, b_q, shape) in dense_q:
+    W_sfix, Wshape = to_sfix_flat(W_q)
+    b_sfix, _ = to_sfix_flat(b_q)
+    dense_sfix.append((W_sfix, b_sfix, shape))
+
+print_ln("Embedded conv=%s dense=%s as sfix constants.", len(conv_sfix), len(dense_sfix))
+
+# Runtime: accept input over socket and run forward pass
+print_ln("Runtime: listening for flattened %s uint8 pixels (0..255) over socket.", INPUT_LEN)
+
+port = regint(10000)   # change port if necessary
+listen(port)
+socket_id = regint()
+acceptclientconnection(socket_id, port)
+
+# read flattened image as sint array (CLIENT must send INPUT_LEN integers)
+x_int = sint.read_from_socket(socket_id, INPUT_LEN)
+
+print_ln("Received %s integers from socket", INPUT_LEN)
+
+# convert to sfix normalized [0..1]
+img_flat = sfix.Array(INPUT_LEN)
+for i in range(INPUT_LEN):
+    img_flat[i] = sfix(x_int[i]) / sfix(255)
+
+# utilities to reshape sfix arrays into nested Python lists expected by ml layers ----
+def flat_to_nested_4d(flat_sfix, shape):
+    kh, kw, in_ch, out_ch = shape
+    out = [[ [ [None for _ in range(out_ch)] for _ in range(in_ch)] for _ in range(kw)] for _ in range(kh)]
+    idx = 0
+    for i0 in range(kh):
+        for i1 in range(kw):
+            for i2 in range(in_ch):
+                for i3 in range(out_ch):
+                    out[i0][i1][i2][i3] = flat_sfix[idx]
+                    idx += 1
+    return out
+
+def flat_to_nested_2d(flat_sfix, shape):
+    a, b = shape
+    out = [[None for _ in range(b)] for _ in range(a)]
+    idx = 0
+    for i0 in range(a):
+        for i1 in range(b):
+            out[i0][i1] = flat_sfix[idx]
+            idx += 1
+    return out
+
+def flat_to_bias(flat_sfix, length):
+    return [flat_sfix[i] for i in range(length)]
+
+# Build input tensor NHWC (N=1)
+N = 1
+def build_input_nhwc(flat_img, H, W, C):
+    tensor = [ [ [ [None for _ in range(C)] for _ in range(W)] for _ in range(H) ] for _ in range(N) ]
+    idx = 0
+    for n in range(N):
+        for h in range(H):
+            for w in range(W):
+                for c in range(C):
+                    tensor[n][h][w][c] = flat_img[idx]
+                    idx += 1
+    return tensor
+
+current_tensor = build_input_nhwc(img_flat, INPUT_H, INPUT_W, INPUT_C)
+current_H, current_W, current_C = INPUT_H, INPUT_W, INPUT_C
+
+# ---- Apply conv -> relu -> maxpool (for each conv in conv_sfix) ----
+for i_conv, (w_sfix_flat, b_sfix_flat, kshape) in enumerate(conv_sfix):
+    kh, kw, in_ch, out_ch = kshape
+    if in_ch != current_C:
+        print_ln("Warning: Conv #%s expects in_ch=%s but current_C=%s. Proceeding anyway.", i_conv+1, in_ch, current_C)
+
+    # compute output dims for VALID convolution
+    OH = current_H - kh + 1
+    OW = current_W - kw + 1
+
+    input_shape = [N, current_H, current_W, current_C]
+    weight_shape = (kh, kw, in_ch, out_ch)
+    bias_shape = (out_ch,)
+    output_shape = [N, OH, OW, out_ch]
+
+    weight_nested = flat_to_nested_4d(w_sfix_flat, weight_shape)
+    bias_nested = flat_to_bias(b_sfix_flat, out_ch)
+
+    # Create conv layer; set tf_weight_format=True (Keras format kh,kw,in_ch,out_ch)
+    conv_layer = ml.FixConv2d(input_shape, weight_shape, bias_shape, output_shape, stride=(1,1), padding='VALID', tf_weight_format=True)
+    conv_layer.weights = weight_nested
+    conv_layer.bias = bias_nested
+
+    out_conv = conv_layer(current_tensor)
+
+    # ReLU
+    relu_layer = ml.Relu(output_shape)
+    out_relu = relu_layer(out_conv)
+
+    # If possible, apply 2x2 maxpool with stride 2 like in your model screenshot
+    if OH >= 2 and OW >= 2:
+        # MaxPool parameters: use shape of output as the input to the pool layer
+        pool_in_shape = [N, OH, OW, out_ch]
+        pool_out_H = OH // 2
+        pool_out_W = OW // 2
+        pool_out_shape = [N, pool_out_H, pool_out_W, out_ch]
+        pool_layer = ml.MaxPool(pool_in_shape, ksize=(1,2,2,1), strides=(1,2,2,1), padding='VALID')
+        out_pooled = pool_layer(out_relu)
+        current_tensor = out_pooled
+        current_H, current_W, current_C = pool_out_H, pool_out_W, out_ch
+    else:
+        current_tensor = out_relu
+        current_H, current_W, current_C = OH, OW, out_ch
+
+    print_ln("After conv #%s: shape %s x %s x %s", i_conv+1, current_H, current_W, current_C)
+
+# Flatten for dense layers (N=1)
+flatten_len = current_H * current_W * current_C
+print_ln("Flatten length = %s", flatten_len)
+
+dense_input = []
+for h in range(current_H):
+    for w in range(current_W):
+        for c in range(current_C):
+            dense_input.append(current_tensor[0][h][w][c])
+
+# Dense layers
+dense_out = dense_input
+for di, (W_sfix_flat, b_sfix_flat, Wshape) in enumerate(dense_sfix):
+    in_dim, out_dim = Wshape
+
+    dense_layer = ml.Dense(N, in_dim, out_dim, activation='id')
+    W_nested = flat_to_nested_2d(W_sfix_flat, (in_dim, out_dim))
+    b_nested = flat_to_bias(b_sfix_flat, out_dim)
+    dense_layer.weights = W_nested
+    dense_layer.bias = b_nested
+
+    # prepare input [N, in_dim]
+    dense_input_tensor = [ [None for _ in range(in_dim)] for _ in range(N) ]
+    for iidx in range(in_dim):
+        dense_input_tensor[0][iidx] = dense_out[iidx] if iidx < len(dense_out) else sfix(0)
+
+    dense_result = dense_layer(dense_input_tensor)
+    dense_first = dense_result[0]
+
+    # apply ReLU except for final dense
+    if di < (len(dense_sfix) - 1):
+        next_out = [ dense_first[j] if isinstance(dense_first[j], sfix) else sfix(dense_first[j]) for j in range(out_dim) ]
+        # ReLU elementwise: max(x,0)
+        next_out = [ ml.relu_scalar(next_out[j]) if hasattr(ml, 'relu_scalar') else (next_out[j] if next_out[j] > sfix(0) else sfix(0)) for j in range(out_dim) ]
+    else:
+        next_out = dense_first
+
+    dense_out = next_out
+    print_ln("After dense #%s: out_dim=%s", di+1, out_dim)
+
+logits = dense_out
+num_classes = len(logits)
+print_ln("Forward pass complete. logits dim=%s", num_classes)
+
+# Reveal logits and send back to client
+revealed_logits = [ logits[i].reveal() for i in range(num_classes) ]
+print_ln("Revealed logits. Sending back to client.")
+
+resp = sint.Array(num_classes)
+for i in range(num_classes):
+    resp[i] = revealed_logits[i]
+sint.write_to_socket(socket_id, resp)
+print_ln("Sent %s logits back to client.", num_classes)
+# brain_tumor_mpc.mpc
+from Compiler.types import sfix, sint, regint
+from Compiler.library import print_ln, listen, acceptclientconnection
+from Compiler import ml as ml
+from ExternalIO import *
+import numpy as np
+import os
+
+# Fixed-point precision
+sfix.set_precision(f=16, k=40)
+PRECISION = 16
+SCALE = 2 ** PRECISION
+
+# HuggingFace repo
+REPO_ID = "jawadskript/brain_tumor_detection_CNN_DeepLearning"
+model_file = None
+model_loaded = None
+
+try:
+    from huggingface_hub import snapshot_download
+    import tensorflow as tf
+    hf_available = True
+except Exception as e:
+    hf_available = False
+    tf = None
+    snapshot_download = None
+    print_ln("HF/TensorFlow unavailable: %s", str(e))
+
+if hf_available:
+    try:
+        repo_dir = snapshot_download(repo_id=REPO_ID)
+        for fname in os.listdir(repo_dir):
+            if fname.endswith(".h5") or fname.endswith(".keras"):
+                model_file = os.path.join(repo_dir, fname)
+                break
+        if model_file is None and "model" in os.listdir(repo_dir):
+            model_file = os.path.join(repo_dir, "model")
+        print_ln("Repo=%s ; model_file=%s", repo_dir, str(model_file))
+    except Exception as e:
+        model_file = None
+        print_ln("snapshot_download failed: %s", str(e))
+
+if model_file is not None and tf is not None:
+    try:
+        model_loaded = tf.keras.models.load_model(model_file, compile=False)
+        print_ln("Loaded Keras model, layers=%s", len(model_loaded.layers))
+    except Exception as e:
+        print_ln("Keras load failed: %s", str(e))
+
+DEFAULT_H = 150
+DEFAULT_W = 150
+DEFAULT_C = 3
+
+INPUT_H = DEFAULT_H
+INPUT_W = DEFAULT_W
+INPUT_C = DEFAULT_C
+
+# Auto-detect model input shape
+if model_loaded is not None:
+    try:
+        in_shape = model_loaded.input_shape
+        if isinstance(in_shape, list):
+            in_shape = in_shape[0]
+        if len(in_shape) == 4:
+            INPUT_H = int(in_shape[1] or DEFAULT_H)
+            INPUT_W = int(in_shape[2] or DEFAULT_W)
+            INPUT_C = int(in_shape[3] or DEFAULT_C)
+        elif len(in_shape) == 3:
+            INPUT_H = int(in_shape[0] or DEFAULT_H)
+            INPUT_W = int(in_shape[1] or DEFAULT_W)
+            INPUT_C = int(in_shape[2] or DEFAULT_C)
+        print_ln("Detected input: %sx%sx%s", INPUT_H, INPUT_W, INPUT_C)
+    except:
+        INPUT_H, INPUT_W, INPUT_C = DEFAULT_H, DEFAULT_W, DEFAULT_C
+else:
+    print_ln("Using default input: %sx%sx%s", INPUT_H, INPUT_W, INPUT_C)
+
+INPUT_LEN = INPUT_H * INPUT_W * INPUT_C
+
+# Quantization helpers
+def quantize_np(arr):
+    return np.round(arr.astype(np.float64) * SCALE).astype(np.int64)
+
+def to_sfix_flat(np_q):
+    flat = np_q.flatten()
+    n = flat.size
+    arr = sfix.Array(n)
+    for i in range(n):
+        arr[i] = sfix(int(flat[i])) / sfix(SCALE)
+    return arr, np_q.shape
+
+# Extract weights
+conv_layers = []
+dense_layers = []
+
+if model_loaded is not None:
+    for layer in model_loaded.layers:
+        name = layer.__class__.__name__
+        if name == "Conv2D":
+            conv_layers.append(layer)
+        elif name == "Dense":
+            dense_layers.append(layer)
+
+conv_q = []
+for i in range(min(3, len(conv_layers))):
+    w, b = conv_layers[i].get_weights()
+    conv_q.append((quantize_np(w), quantize_np(b), w.shape))
+
+dense_q = []
+for i in range(min(2, len(dense_layers))):
+    W, b = dense_layers[i].get_weights()
+    dense_q.append((quantize_np(W), quantize_np(b), W.shape))
+
+conv_sfix = []
+for (w_q, b_q, shape) in conv_q:
+    w_sfix, _ = to_sfix_flat(w_q)
+    b_sfix, _ = to_sfix_flat(b_q)
+    conv_sfix.append((w_sfix, b_sfix, shape))
+
+dense_sfix = []
+for (W_q, b_q, shape) in dense_q:
+    W_sfix, _ = to_sfix_flat(W_q)
+    b_sfix, _ = to_sfix_flat(b_q)
+    dense_sfix.append((W_sfix, b_sfix, shape))
+
+print_ln("Embedded conv=%s dense=%s", len(conv_sfix), len(dense_sfix))
+
+# Runtime input
+print_ln("Listening for %s pixels...", INPUT_LEN)
+
+port = regint(10000)
+listen(port)
+socket_id = regint()
+acceptclientconnection(socket_id, port)
+
+x_int = sint.read_from_socket(socket_id, INPUT_LEN)
+print_ln("Received %s integers", INPUT_LEN)
+
+# Normalize input
+img_flat = sfix.Array(INPUT_LEN)
+for i in range(INPUT_LEN):
+    img_flat[i] = sfix(x_int[i]) / sfix(255)
+
+# Tensor helpers
+def flat_to_nested_4d(flat_sfix, shape):
+    kh, kw, in_ch, out_ch = shape
+    out = [[[[None for _ in range(out_ch)] for _ in range(in_ch)] for _ in range(kw)] for _ in range(kh)]
+    idx = 0
+    for i0 in range(kh):
+        for i1 in range(kw):
+            for i2 in range(in_ch):
+                for i3 in range(out_ch):
+                    out[i0][i1][i2][i3] = flat_sfix[idx]
+                    idx += 1
+    return out
+
+def flat_to_nested_2d(flat_sfix, shape):
+    a, b = shape
+    out = [[None for _ in range(b)] for _ in range(a)]
+    idx = 0
+    for i0 in range(a):
+        for i1 in range(b):
+            out[i0][i1] = flat_sfix[idx]
+            idx += 1
+    return out
+
+def flat_to_bias(flat_sfix, length):
+    return [flat_sfix[i] for i in range(length)]
+
+def build_input_nhwc(flat_img, H, W, C):
+    tensor = [[[[None for _ in range(C)] for _ in range(W)] for _ in range(H)]]
+    idx = 0
+    for h in range(H):
+        for w in range(W):
+            for c in range(C):
+                tensor[0][h][w][c] = flat_img[idx]
+                idx += 1
+    return tensor
+
+current_tensor = build_input_nhwc(img_flat, INPUT_H, INPUT_W, INPUT_C)
+current_H, current_W, current_C = INPUT_H, INPUT_W, INPUT_C
+
+# Forward pass: conv → relu → pool
+for (w_sfix_flat, b_sfix_flat, kshape) in conv_sfix:
+    kh, kw, in_ch, out_ch = kshape
+    OH = current_H - kh + 1
+    OW = current_W - kw + 1
+
+    weight_nested = flat_to_nested_4d(w_sfix_flat, kshape)
+    bias_nested = flat_to_bias(b_sfix_flat, out_ch)
+
+    conv_layer = ml.FixConv2d([1,current_H,current_W,current_C], kshape, (out_ch,), [1,OH,OW,out_ch], stride=(1,1), padding='VALID', tf_weight_format=True)
+    conv_layer.weights = weight_nested
+    conv_layer.bias = bias_nested
+
+    out_conv = conv_layer(current_tensor)
+    relu_layer = ml.Relu([1,OH,OW,out_ch])
+    out_relu = relu_layer(out_conv)
+
+    if OH >= 2 and OW >= 2:
+        pool_out_H = OH // 2
+        pool_out_W = OW // 2
+        pool_layer = ml.MaxPool([1,OH,OW,out_ch], ksize=(1,2,2,1), strides=(1,2,2,1), padding='VALID')
+        current_tensor = pool_layer(out_relu)
+        current_H, current_W, current_C = pool_out_H, pool_out_W, out_ch
+    else:
+        current_tensor = out_relu
+        current_H, current_W, current_C = OH, OW, out_ch
+
+print_ln("Flattening...")
+flatten_len = current_H * current_W * current_C
+
+dense_input = []
+for h in range(current_H):
+    for w in range(current_W):
+        for c in range(current_C):
+            dense_input.append(current_tensor[0][h][w][c])
+
+# Dense layers
+dense_out = dense_input
+for (W_sfix_flat, b_sfix_flat, Wshape) in dense_sfix:
+    in_dim, out_dim = Wshape
+    dense_layer = ml.Dense(1, in_dim, out_dim, activation='id')
+
+    dense_layer.weights = flat_to_nested_2d(W_sfix_flat, (in_dim,out_dim))
+    dense_layer.bias = flat_to_bias(b_sfix_flat, out_dim)
+
+    dense_input_tensor = [[ dense_out[i] if i < len(dense_out) else sfix(0) for i in range(in_dim) ]]
+    dense_result = dense_layer(dense_input_tensor)[0]
+
+    # ReLU for non-final dense
+    if out_dim != len(dense_sfix[-1][0]):
+        dense_out = [ ml.relu_scalar(dense_result[j]) if hasattr(ml,'relu_scalar') else (dense_result[j] if dense_result[j] > sfix(0) else sfix(0)) for j in range(out_dim) ]
+    else:
+        dense_out = dense_result
+
+logits = dense_out
+num_classes = len(logits)
+
+# Reveal + send back
+revealed_logits = [ logits[i].reveal() for i in range(num_classes) ]
+resp = sint.Array(num_classes)
+for i in range(num_classes):
+    resp[i] = revealed_logits[i]
+
+sint.write_to_socket(socket_id, resp)
+print_ln("Sent %s logits.", num_classes)

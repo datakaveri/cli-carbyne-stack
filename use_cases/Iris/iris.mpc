@@ -1,0 +1,139 @@
+program.options_from_args()
+
+from Compiler.types import sfix
+sfix.set_precision(f=16, k=40)
+from Compiler.types import sfix, regint, sint
+from Compiler.library import print_ln
+from ExternalIO import *
+
+
+# Hardcoded Iris MLP (no Hugging Face)
+PRECISION = 16
+SCALE = 2 ** PRECISION
+INPUT_SIZE = 4
+HIDDEN1 = 5
+OUTPUT = 3
+
+# W1 - maps 4 inputs to 5 hidden units (rows = input dims)
+W1_q = [
+    [65536, 0, 0, 0, 0],   # input 0 contributes to hidden 0
+    [0, 65536, 0, 0, 0],   # input 1 -> hidden 1
+    [0, 0, 65536, 0, 0],   # input 2 -> hidden 2
+    [0, 0, 0, 65536, 0],   # input 3 -> hidden 3
+]
+b1_q = [0, 0, 0, 0, 0]
+
+# W2 - maps 5 hidden units to 3 outputs
+# rows = hidden units, cols = output logits
+W2_q = [
+    [65536, 0, 0],      
+    [0, 65536, 0],      
+    [0, 0, 65536],      
+    [32768, 32768, 0],  
+    [0, 32768, 32768],  
+]
+b2_q = [0, 0, 0]
+
+
+# Helpers to turn integer arrays into sfix matrices (divide by SCALE inside) 
+
+def const_matrix(mat):
+    rows = len(mat)
+    cols = len(mat[0])
+    m = sfix.Matrix(rows, cols)
+    for i in range(rows):
+        for j in range(cols):
+            m[i][j] = sfix(int(mat[i][j])) / sfix(SCALE)
+    return m
+
+
+def const_vector_as_matrix(vec):
+    n = len(vec)
+    m = sfix.Matrix(1, n)
+    for j in range(n):
+        m[0][j] = sfix(int(vec[j])) / sfix(SCALE)
+    return m
+
+# ReLU and secure-argmax helpers
+
+def relu(arr):
+    return [sfix.max(a, sfix(0)) for a in arr]
+
+
+def argmax_secure(arr):
+    """
+    Secure argmax over secret-shared sfix values.
+    Returns a secret sint index (0..len(arr)-1).
+    """
+    # start with secret index and secret value
+    max_idx = sint(0)
+    max_val = arr[0]  # sfix
+
+    for i in range(1, len(arr)):
+        # secure comparison: returns secret bit (sint)
+        gt = arr[i] > max_val  # sint (1 if arr[i] > max_val, else 0)
+        # select new max value and index using secret if-else
+        max_val = gt.if_else(arr[i], max_val)      # sfix
+        max_idx = gt.if_else(sint(i), max_idx)     # sint
+
+    return max_idx
+
+
+W1_fix = const_matrix(W1_q)   # (4 x 5)
+b1_fix = const_vector_as_matrix(b1_q)  
+W2_fix = const_matrix(W2_q)   # (5 x 3)
+b2_fix = const_vector_as_matrix(b2_q)  
+
+
+# Socket: read scaled integers from client
+# Client must send exactly INPUT_SIZE integers where each integer = feature * SCALE
+port = regint(10000)
+listen(port)
+socket_id = regint()
+acceptclientconnection(socket_id, port)
+
+v_int = sint.read_from_socket(socket_id, INPUT_SIZE)
+
+# Convert to sfix array by dividing by SCALE
+v = sfix.Array(INPUT_SIZE)
+for i in range(INPUT_SIZE):
+    v[i] = sfix(v_int[i]) / sfix(SCALE)
+
+print_ln(" Received IRIS input of size %s", INPUT_SIZE)
+
+# Convert to 1 x INPUT_SIZE matrix
+x = sfix.Matrix(1, INPUT_SIZE)
+for i in range(INPUT_SIZE):
+    x[0][i] = v[i]
+
+print_ln("Converted input to sfix matrix successfully.")
+
+
+# Forward pass: 
+
+hidden1 = x.dot(W1_fix) + b1_fix
+hidden1_arr = relu(hidden1.to_array())  
+
+# compute logits
+out = sfix.Array(OUTPUT)
+for j in range(OUTPUT):
+    s = sfix(0)
+    for i in range(HIDDEN1):
+        s += hidden1_arr[i] * W2_fix[i][j]
+    s += b2_fix[0][j]
+    out[j] = s
+
+# use secure argmax (no intermediate reveals)
+pred_label = argmax_secure(out)
+# reveal final predicted label (clear integer)
+pred_label_clear = pred_label.reveal()
+
+print_ln("Predicted label: %s", pred_label_clear)
+
+# send back single integer label
+resp = sint.Array(1)
+# resp expects sint values; assign the clear/regint value to resp[0] (works)
+resp[0] = pred_label_clear
+sint.write_to_socket(socket_id, resp)
+print_ln(" Sent predicted label back to client.")
+
