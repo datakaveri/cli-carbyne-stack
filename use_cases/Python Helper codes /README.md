@@ -24,3 +24,5 @@
 11. spacetoarray.py- A script that converts numbers seperated by spaces (required while giving an input on cabynestack) to an array and also prints its length. 
 
 12. testmnist.py- This script loads a pretrained MNIST MLP model from Hugging Face and attaches forward hooks to extract activations from each layer during inference. It then takes a 28×28 pixel image (flattened), normalizes it, runs it through the network, and stores the intermediate outputs. Finally, it prints the activations of each layer and the predicted digit label.
+
+13. mnist_test_batch.py- This script loads the MNIST test set and extracts the first 100 images, normalizing each pixel to [0,1] and converting them into fixed-point integers using 2^16 scaling. It flattens all 100 images and writes them sequentially into a binary file (mnist_test_batch.bin).
