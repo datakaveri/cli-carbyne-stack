@@ -1,0 +1,73 @@
+# Batch Cosine Similarity Computation for Fingerprint Embeddings
+# Computes cosine similarity squared between one query fingerprint and multiple database fingerprints
+# Usage: Run with MP-SPDZ locally for testing
+# Input: 
+#   - Player-Data/Input-P0-0: Query fingerprint (512 float values)
+#   - Player-Data/Input-P1-0: First value is number of embeddings (N), then N*512 float values
+
+# Configuration: Number of database embeddings
+# Set this to match the number of embeddings in your database
+# This must be a compile-time constant (regint literal)
+NUM_EMBEDDINGS = 80  # Change this to match your actual number of embeddings
+
+# Read query fingerprint from Party 0's input file (512 float values)
+fingerprint1 = [sfix.get_input_from(0) for i in range(512)]
+
+# Skip the first value in Party 1's input (it's the count, but we use compile-time constant)
+# Read it just to advance the input pointer, but we don't use it
+_count_value = sfix.get_input_from(1)  # Read and discard the count value
+
+# Read all database embeddings from Party 1's input file
+# We read NUM_EMBEDDINGS * 512 values
+num_embeddings = NUM_EMBEDDINGS
+print_ln('Number of database embeddings: %s', num_embeddings)
+
+database_embeddings = []
+for i in range(num_embeddings):
+    embedding = [sfix.get_input_from(1) for j in range(512)]
+    database_embeddings.append(embedding)
+
+print_ln('Loaded %s database embeddings', num_embeddings)
+
+# Pre-compute magnitude squared of query fingerprint (used for all comparisons)
+magnitude1_squared = sfix(0)
+for i in range(512):
+    magnitude1_squared = magnitude1_squared + fingerprint1[i] * fingerprint1[i]
+
+magnitude1_sq_revealed = magnitude1_squared.reveal()
+print_ln('Query fingerprint magnitude squared: %s', magnitude1_sq_revealed)
+
+# Compute cosine similarity squared for each database embedding
+print_ln('')
+print_ln('=== Cosine Similarity Squared Results ===')
+print_ln('Format: Embedding_Index: Cosine_Similarity_Squared')
+
+for idx in range(num_embeddings):
+    fingerprint2 = database_embeddings[idx]
+    
+    # Compute dot product
+    dot_prod = sfix.dot_product(fingerprint1, fingerprint2, res_params=None)
+    
+    # Compute magnitude squared of database fingerprint
+    magnitude2_squared = sfix(0)
+    for i in range(512):
+        magnitude2_squared = magnitude2_squared + fingerprint2[i] * fingerprint2[i]
+    
+    # Compute cosine similarity squared
+    # cosine_similarity^2 = dot_product^2 / (magnitude1_squared * magnitude2_squared)
+    dot_prod_squared = dot_prod * dot_prod
+    denominator_squared = magnitude1_squared * magnitude2_squared
+    cosine_similarity_squared = dot_prod_squared / denominator_squared
+    
+    # Reveal and print results
+    dot_prod_revealed = dot_prod.reveal()
+    magnitude2_sq_revealed = magnitude2_squared.reveal()
+    cosine_sim_sq_revealed = cosine_similarity_squared.reveal()
+    
+    print_ln('Embedding %s:', idx)
+    print_ln('  Dot product: %s', dot_prod_revealed)
+    print_ln('  Magnitude2 squared: %s', magnitude2_sq_revealed)
+    print_ln('  Cosine Similarity Squared: %s', cosine_sim_sq_revealed)
+    print_ln('')
+
+print_ln('=== Batch Matching Complete ===')
