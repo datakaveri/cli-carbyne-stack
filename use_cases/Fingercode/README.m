@@ -16,6 +16,8 @@ Before running the pipeline, make sure you have:
 -   A deployed Carbynestack
     
 -   Proper permissions to upload secrets and feature vectors
+
+-   Extract `DB1_B.zip`
     
 
 ----------
