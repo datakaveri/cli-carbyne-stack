@@ -62,9 +62,12 @@ fingerprint1 = [sfix(v_sint[i]) / SCALE for i in range(512)]
 fingerprint2 = [sfix(v_sint[i + 512]) / SCALE for i in range(512)]
 
 # Compute dot product
-dot_prod = sfix(0)
-for i in range(512):
-    dot_prod += fingerprint1[i] * fingerprint2[i]
+# dot_prod = sfix(0)
+# for i in range(512):
+#     dot_prod += fingerprint1[i] * fingerprint2[i]
+
+dot_prod = sfix.dot_product(fingerprint1, fingerprint2)
+
 
 # Compute magnitude squared
 magnitude1_squared = sfix(0)
@@ -94,7 +97,9 @@ flag = cosine_similarity_squared.reveal()
 # resp[3] = cosine_similarity_squared
 # resp[4] = flag
 
-cfix.write_to_socket(socket_id, flag)
+ans = cosine_similarity_squared*sint(100)
+ans = sint(ans)
+sint.write_to_socket(socket_id, ans)
 EOF
 
 echo "Created cosine_similarity.mpc file"
