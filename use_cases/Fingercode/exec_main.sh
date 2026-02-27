@@ -34,9 +34,7 @@ echo "Total expected elements in MPC: $total_elements"
 echo "--- READY FOR EXECUTION ---"
 # 5. Create the distance.mpc file
 cat << EOF > distance.mpc
-from Compiler import mpc_math
-
-sfix.set_precision(f=16,k=40)
+###THIS VERSION IS ONLY FOR 1-to-1 COMPARISON OF FINGERPRINTS FOR TESTING PURPOSE ONLY
 port = regint(10000)
 listen(port)
 socket_id = regint()
@@ -47,10 +45,13 @@ v = sint.read_from_socket(socket_id,$feature_count*2)
 
 # Split the probe into its two constituent codes
 # v[0:640] is fingercode1, v[640:1280] is fingercode2
-probe1 = sfix(v[0:640]) * sfix(0.01)
-probe2 = sfix(v[640:1280]) * sfix(0.01)
+probe1 = sint(v[0:640])
+probe2 = sint(v[640:1280])
 global min_dist,counter
-min_dist = sfix(8000000)
+min_dist = sint(8000000)
+# Each DB entry also has two codes
+db_f1 = sint(v[1280 : 1280 + 640])
+db_f2 = sint(v[1280 + 640 : 1280 + 1280])
 counter =0
 
 @for_range($db_count)
@@ -59,9 +60,6 @@ def _(i):
     global counter, min_dist
     offset = (1+counter) * $feature_count
     counter = counter +1
-    # Each DB entry also has two codes
-    db_f1 = sfix(v[offset : offset + 640]) * sfix(0.01)
-    db_f2 = sfix(v[offset + 640 : offset + 1280]) * sfix(0.01)
     diff1 = probe1 - db_f1
     sqdiff1 = diff1*diff1
     fp1 = sum(sqdiff1)
@@ -77,7 +75,7 @@ def _(i):
     min_dist = (local_min < min_dist).if_else(local_min, min_dist)
 
 
-final_sfix = mpc_math.sqrt(min_dist)
+final_sfix =min_dist
 resp = Array(1, sint)
 resp[0] = sint(final_sfix)
 sint.write_to_socket(socket_id,resp)
