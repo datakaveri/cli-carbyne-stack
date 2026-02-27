@@ -34,7 +34,7 @@ echo "Total expected elements in MPC: $total_elements"
 echo "--- READY FOR EXECUTION ---"
 # 5. Create the distance.mpc file
 cat << EOF > distance.mpc
-
+###THIS VERSION IS ONLY FOR 1-to-1 COMPARISON OF FINGERPRINTS FOR TESTING PURPOSE ONLY
 port = regint(10000)
 listen(port)
 socket_id = regint()
