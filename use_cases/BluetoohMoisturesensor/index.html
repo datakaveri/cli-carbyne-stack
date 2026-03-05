@@ -1,0 +1,1051 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Soil Sensor MPC Monitor · MahaAgX</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com/" />
+  <link rel="preconnect" href="https://fonts.gstatic.com/" crossorigin="" />
+  <link href="https://fonts.googleapis.com/css2?family=DM+Sans:ital,opsz,wght@0,9..40,100..1000;1,9..40,100..1000&display=swap" rel="stylesheet" />
+  <style>
+    /* ─────────────────────────────────────
+       DESIGN TOKENS — tuned to screenshots
+    ───────────────────────────────────── */
+    :root {
+      /* Greens */
+      --g-primary:    #00b87a;
+      --g-bright:     #34d399;
+      --g-dark:       #0f4a3d;
+      --g-darker:     #0a3d32;
+      --g-deep:       #022118;
+      --g-text:       #11634f;
+      --o-primary:    #f97316;
+      --o-bright:     #fb923c;
+      --o-dark:       #c2410c;
+      --o-darker:     #9a3412;
+      --o-deep:       #431407;
+      --o-text:       #7c2d12;
+
+      --bg-white:     #ffffff;
+      --bg-cream:     #f5f3ed;
+      --border-light: #e5e7eb;
+
+      --os-bg:        #0f0a08;
+      --os-surface:   #18120d;
+      --os-surface2:  #1f1812;
+      --os-border:    #30221c;
+      --os-text:      #ffedd5;
+      --os-muted:     #9a6b52;
+
+      --ds-bg:        #080f0b;
+      --ds-surface:   #0d1810;
+      --ds-surface2:  #121f15;
+      --ds-border:    #1c3022;
+      --ds-text:      #d4efe3;
+      --ds-muted:     #5d9470;
+
+      --danger:  #ef4444;
+      --amber:   #f59e0b;
+      --blue:    #3b82f6;
+
+      --r-sm:   8px;
+      --r-md:   12px;
+      --r-lg:   16px;
+      --r-full: 9999px;
+      --font:   "DM Sans", -apple-system, sans-serif;
+      --max-w:  1400px;
+      --ease:   .22s ease;
+    }
+
+    *, *::before, *::after { margin:0; padding:0; box-sizing:border-box; }
+    html { scroll-behavior:smooth; overflow-x:hidden; }
+    body { font-family:var(--font); background:var(--bg-white); color:#1a1a1a; }
+
+    /* ═══════════════════════════════════
+       NAVBAR
+    ═══════════════════════════════════ */
+    .nav {
+      position: fixed;
+      inset: 0 0 auto;
+      z-index: 1000;
+      padding: 0;
+      transition: background var(--ease), box-shadow var(--ease), border-color var(--ease);
+    }
+    .nav.on-hero { background: transparent; border-bottom: 1px solid transparent; }
+    .nav.on-hero .nav__link    { color: rgba(255,255,255,.9); }
+    .nav.on-hero .nav__link:hover { color: var(--g-bright); }
+    .nav.on-hero .nav__login   { color: #fff; }
+    .nav.on-hero .logo__text   { color: #fff; }
+    .nav.on-hero .logo__seal   { filter: brightness(10) saturate(0); opacity:.8; }
+    .nav.on-hero .icon-btn     { color: rgba(255,255,255,.8); }
+    .nav.on-hero .icon-btn:hover { background: rgba(255,255,255,.12); }
+
+    .nav.scrolled {
+      background: rgba(255,255,255,.97);
+      border-bottom: 1px solid rgba(0,0,0,.07);
+      box-shadow: 0 2px 20px rgba(0,0,0,.07);
+      backdrop-filter: blur(16px);
+      -webkit-backdrop-filter: blur(16px);
+    }
+    .nav.scrolled .nav__link    { color: #2d2d2d; }
+    .nav.scrolled .nav__link:hover { color: var(--g-text); }
+    .nav.scrolled .nav__login   { color: #2d2d2d; }
+    .nav.scrolled .logo__text   { color: #1a1a1a; }
+    .nav.scrolled .logo__seal   { filter:none; opacity:1; }
+    .nav.scrolled .icon-btn     { color: #555; }
+    .nav.scrolled .icon-btn:hover { background: rgba(0,0,0,.06); }
+
+    .nav__inner {
+      max-width: var(--max-w);
+      margin: 0 auto;
+      padding: .85rem 2rem;
+      display: flex;
+      align-items: center;
+      gap: 1.5rem;
+    }
+
+    .nav__logo   { flex-shrink:0; }
+    .logo__link  { display:flex; align-items:center; gap:10px; text-decoration:none; }
+    .logo__seal  { height: 38px; width:auto; transition: filter var(--ease), opacity var(--ease); }
+    .logo__text  { font-size: 1.3rem; font-weight: 700; letter-spacing: -.4px; transition: color var(--ease); line-height: 1; }
+    .logo__text em { font-style:italic; font-weight:400; }
+
+    .nav__links { flex: 1; display: flex; align-items: center; justify-content: center; gap: 2px; list-style: none; }
+    .nav__link  { display: block; text-decoration: none; font-size: .88rem; font-weight: 400; padding: .38rem .75rem; border-radius: 8px; white-space: nowrap; transition: color var(--ease), background var(--ease); }
+    .nav__link.active { background: rgba(17,99,79,.1); color: var(--g-text) !important; font-weight: 600; }
+
+    .icon-btn { display: flex; align-items:center; justify-content:center; width: 32px; height: 32px; background: transparent; border: none; border-radius: 50%; cursor: pointer; transition: background var(--ease), color var(--ease); }
+    .icon-btn svg { width:18px; height:18px; stroke:currentColor; stroke-width:1.8; fill:none; }
+
+    .nav__actions { display:flex; align-items:center; gap:.5rem; flex-shrink:0; }
+
+    .status-pill { display: flex; align-items:center; gap:6px; padding: 4px 12px; border-radius: var(--r-full); font-size: 11.5px; font-weight: 500; border: 1px solid rgba(255,255,255,.25); background: rgba(255,255,255,.12); color: #fff; transition: all var(--ease); }
+    .nav.scrolled .status-pill { border-color: rgba(17,99,79,.2); background: rgba(17,99,79,.06); color: var(--g-text); }
+    .status-dot { width: 7px; height: 7px; border-radius:50%; background: #ff5f5f; flex-shrink: 0; animation: pulse 2s infinite; }
+    .status-dot.ok   { background: var(--g-primary); }
+    .status-dot.busy { background: var(--amber); }
+
+    @keyframes pulse { 0%,100% { opacity:1; } 50% { opacity:.45; } }
+
+    .reading-badge { font-size: 11px; padding: 4px 10px; border-radius: var(--r-full); border: 1px solid rgba(255,255,255,.2); background: rgba(255,255,255,.1); color: rgba(255,255,255,.75); white-space: nowrap; transition: all var(--ease); }
+    .nav.scrolled .reading-badge { background: var(--bg-cream); border-color: var(--border-light); color: #555; }
+
+    .nav__login { background: transparent; border: none; font: 500 .88rem/1 var(--font); cursor: pointer; padding: .4rem .75rem; border-radius: 8px; transition: color var(--ease); }
+
+    .btn-register { background: var(--g-primary); color: #fff; border: none; cursor: pointer; font: 600 .88rem/1 var(--font); padding: .5rem 1.1rem; border-radius: var(--r-sm); transition: background var(--ease), transform var(--ease); }
+    .btn-register:hover { background: #009966; transform: translateY(-1px); }
+
+    /* ═══════════════════════════════════
+       HERO
+    ═══════════════════════════════════ */
+    .hero { position: relative; width: 100%; height: 100vh; min-height: 620px; background: var(--g-deep); overflow: hidden; display: flex; align-items: center; }
+    .hero__video { position: absolute; right: 0; top: 0; width: 100%; height: 100%; object-fit: cover; filter: saturate(.65) brightness(1.1) hue-rotate(-5deg); z-index: 1; }
+    .hero__overlay { position: absolute; inset: 0; z-index: 2; background: linear-gradient(to right, rgba(2,33,24,.97) 0%, rgba(5,45,33,.88) 30%, rgba(10,60,45,.55) 55%, rgba(20,55,45,.75) 100%); }
+    .hero__body { position: relative; z-index: 3; max-width: var(--max-w); margin: 0 auto; width: 100%; padding: 8rem 2rem 2rem; }
+    .hero__content { max-width: 580px; }
+    .hero__title { font-size: clamp(1.9rem, 4vw, 2.9rem); font-weight: 700; line-height: 1.2; color: #fff; margin-bottom: 1rem; }
+    .hero__title--accent { display: block; color: var(--g-bright); }
+    .hero__sub { font-size: clamp(.9rem, 1.5vw, 1.05rem); line-height: 1.65; color: rgba(255,255,255,.8); margin-bottom: 2rem; }
+
+    .scroll-cta { width: 44px; height: 44px; border-radius: 50%; border: 1.5px solid rgba(255,255,255,.35); background: transparent; color: rgba(255,255,255,.75); display: flex; align-items:center; justify-content:center; cursor: pointer; transition: border-color .2s, color .2s; animation: float 2.5s ease-in-out infinite; }
+    .scroll-cta:hover { border-color: var(--g-bright); color: var(--g-bright); }
+    .scroll-cta svg { width:18px; height:18px; stroke:currentColor; stroke-width:2; fill:none; }
+    @keyframes float { 0%,100% { transform: translateY(0); } 50% { transform: translateY(-7px); } }
+
+    /* ═══════════════════════════════════
+       STATISTICS CARD
+    ═══════════════════════════════════ */
+    .stats-section { background: var(--bg-white); padding: 2.5rem 0; }
+    .stats-section__inner { max-width: var(--max-w); margin: 0 auto; padding: 0 2rem; }
+    .stats-card { background: var(--bg-cream); border-radius: 18px; padding: 2.25rem 3rem; display: flex; align-items: center; justify-content: space-around; gap: 1.5rem; flex-wrap: wrap; }
+    .stat { display: flex; align-items: center; gap: 1rem; flex: 1; min-width: 140px; }
+    .stat__icon { width: 48px; height: 48px; display: flex; align-items:center; justify-content:center; }
+    .stat__icon svg { width: 38px; height: 38px; stroke: var(--g-text); stroke-width: 1.6; fill: none; }
+    .stat__body { display: flex; flex-direction: column; gap: 3px; }
+    .stat__num  { font-size: 2.1rem; font-weight: 700; line-height: 1; color: var(--g-text); }
+    .stat__lbl  { font-size: .93rem; font-weight: 500; color: var(--g-text); }
+    .stat__div  { width:1px; height:58px; background:rgba(17,99,79,.14); flex-shrink:0; }
+
+    /* ═══════════════════════════════════
+       DASHBOARD
+    ═══════════════════════════════════ */
+    .dash-section { background: var(--ds-bg); padding: 2.5rem 0 3.5rem; }
+    .dash-section__inner { max-width: var(--max-w); margin: 0 auto; padding: 0 2rem; }
+    .dash-header { margin-bottom: 1.25rem; }
+    .dash-title  { font-size:1.45rem; font-weight:700; color:#fff; margin-bottom:.2rem; }
+    .dash-sub    { font-size:.85rem; color: var(--ds-muted); }
+
+    /* Notice bar */
+    .notice { background: rgba(245,158,11,.07); border: 1px solid rgba(245,158,11,.2); border-left: 3px solid var(--amber); border-radius: var(--r-sm); padding: 10px 15px; font-size: 12.5px; color: #fbbf24; display: flex; align-items:center; gap:8px; margin-bottom: 18px; }
+    .notice code { background: rgba(245,158,11,.14); border-radius: 4px; padding: 1px 5px; font-family: monospace; font-size:11.5px; }
+
+    /* Port selector row */
+    .port-row { display:flex; gap:8px; align-items:center; margin-bottom:12px; }
+    .port-select { flex:1; max-width:280px; padding:9px 12px; font:13px/1 var(--font); background:var(--ds-surface2); border:1px solid var(--ds-border); border-radius:var(--r-sm); color:var(--ds-text); outline:none; cursor:pointer; }
+    .port-select:focus { border-color:var(--g-primary); }
+    .btn-refresh-ports { padding:9px 14px; font:600 12px/1 var(--font); background:rgba(0,184,122,.08); color:var(--g-bright); border:1px solid rgba(0,184,122,.2); border-radius:var(--r-sm); cursor:pointer; transition:all .2s; white-space:nowrap; }
+    .btn-refresh-ports:hover { background:rgba(0,184,122,.18); }
+    .port-lbl { font-size:11px; color:var(--ds-muted); }
+
+    /* Control buttons */
+    .ctrl-row { display:flex; gap:10px; margin-bottom:20px; }
+    .btn { flex:1; padding: 11px 20px; font: 600 13.5px/1 var(--font); border:none; border-radius: var(--r-sm); cursor:pointer; transition: all .2s; }
+    .btn:disabled { opacity:.38; cursor:not-allowed; }
+    .btn-start { background: var(--g-primary); color:#000; }
+    .btn-start:hover:not(:disabled) { background: #009966; transform: translateY(-1px); box-shadow: 0 4px 16px rgba(0,184,122,.35); }
+    .btn-stop { background: rgba(239,68,68,.1); color:#f87171; border: 1px solid rgba(239,68,68,.22); }
+    .btn-stop:hover:not(:disabled) { background:var(--danger); color:#fff; }
+    .btn-init { flex: 0 0 auto; min-width:170px; background: rgba(0,184,122,.1); color: var(--g-bright); border: 1px solid rgba(0,184,122,.2); }
+    .btn-init:hover:not(:disabled) { background:var(--g-primary); color:#000; }
+
+    /* Two-column grid */
+    .dash-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 18px; }
+
+    /* Panel2 */
+    .panel2 { background: var(--os-surface); border: 1px solid var(--os-border); border-radius: var(--r-lg); overflow: hidden; }
+    .panel2__head { background: linear-gradient(135deg, var(--o-darker) 0%, var(--o-dark) 100%); padding: 12px 18px; display: flex; align-items:center; gap:9px; border-bottom: 1px solid rgba(52,211,153,.1); }
+    .panel2__head-icon { width:26px; height:26px; background: rgba(52,211,153,.14); border-radius:6px; display:flex; align-items:center; justify-content:center; font-size:13px; }
+    .panel2__head h2 { color:#fff; font-size:13.5px; font-weight:600; }
+    .panel2__body { padding:16px; }
+
+    .data-grid { display: grid; grid-template-columns:1fr 1fr; gap:10px; margin-bottom:16px; }
+
+    .dc2 { background: var(--os-surface2); border: 1px solid var(--os-border); border-radius: var(--r-sm); padding: 13px 15px; position:relative; overflow:hidden; transition: border-color .15s; }
+    .dc2::after { content:''; position:absolute; top:0; left:0; right:0; height:2px; background: var(--o-primary); }
+    .dc2:hover { border-color: rgba(0,184,122,.3); }
+    .dc2.dry::after    { background: linear-gradient(90deg,#f6a430,#f97316); }
+    .dc2.moderate::after { background: linear-gradient(90deg,#a3e635,#22c55e); }
+    .dc2.wet::after    { background: linear-gradient(90deg,#38bdf8,#0ea5e9); }
+    .dc2__lbl { font-size:9.5px; text-transform:uppercase; letter-spacing:.7px; color: var(--os-muted); font-weight:600; margin-bottom:6px; }
+    .dc2__val { font-size: 2rem; font-weight:700; line-height:1; color: var(--os-text); font-variant-numeric: tabular-nums; }
+    .dc2__val.sm { font-size: 1.2rem; }
+
+    /* Panel */
+    .panel { background: var(--ds-surface); border: 1px solid var(--ds-border); border-radius: var(--r-lg); overflow: hidden; }
+    .panel__head { background: linear-gradient(135deg, var(--g-darker) 0%, var(--g-dark) 100%); padding: 12px 18px; display: flex; align-items:center; gap:9px; border-bottom: 1px solid rgba(52,211,153,.1); }
+    .panel__head-icon { width:26px; height:26px; background: rgba(52,211,153,.14); border-radius:6px; display:flex; align-items:center; justify-content:center; font-size:13px; }
+    .panel__head h2 { color:#fff; font-size:13.5px; font-weight:600; }
+    .panel__body { padding:16px; }
+
+    .dc { background: var(--ds-surface2); border: 1px solid var(--ds-border); border-radius: var(--r-sm); padding: 13px 15px; position:relative; overflow:hidden; transition: border-color .15s; }
+    .dc::after { content:''; position:absolute; top:0; left:0; right:0; height:2px; background: var(--g-primary); }
+    .dc:hover { border-color: rgba(0,184,122,.3); }
+    .dc.dry::after    { background: linear-gradient(90deg,#f6a430,#f97316); }
+    .dc.moderate::after { background: linear-gradient(90deg,#a3e635,#22c55e); }
+    .dc.wet::after    { background: linear-gradient(90deg,#38bdf8,#0ea5e9); }
+    .dc__lbl { font-size:9.5px; text-transform:uppercase; letter-spacing:.7px; color: var(--ds-muted); font-weight:600; margin-bottom:6px; }
+    .dc__val { font-size: 2rem; font-weight:700; line-height:1; color: var(--ds-text); font-variant-numeric: tabular-nums; }
+    .dc__val.sm { font-size: 1.2rem; }
+    .dc.dry      .dc__val { color:#f97316; }
+    .dc.moderate .dc__val { color:#34d399; }
+    .dc.wet      .dc__val { color:#38bdf8; }
+
+    /* Graph */
+    .graph-wrap { background:#040a06; border:1px solid var(--ds-border); border-radius:var(--r-sm); padding:13px; margin-bottom:12px; }
+    .graph-top { display:flex; justify-content:space-between; align-items:center; margin-bottom:8px; }
+    .graph-top h3 { color:#34d399; font-size:12px; font-weight:600; }
+    .legend { display:flex; gap:12px; }
+    .leg { display:flex; align-items:center; gap:4px; font-size:10px; color: var(--ds-muted); }
+    .leg__dot { width:7px; height:7px; border-radius:50%; }
+    .leg__dot.dry      { background:#f97316; }
+    .leg__dot.moderate { background:#22c55e; }
+    .leg__dot.wet      { background:#38bdf8; }
+    #sensorGraph { width:100%; height:270px; display:block; }
+
+    /* Log2 */
+    .log-box2 { background: #0f0a08; border: 1px solid var(--os-border); border-radius: var(--r-sm); padding: 11px; max-height: 155px; overflow-y: auto; }
+    .log-lbl { font-size:10px; color: var(--ds-muted); font-weight:600; margin-bottom:6px; text-transform: uppercase; }
+    .log-entry { font: 11px/1.5 'Courier New', monospace; padding: 2px 0 2px 8px; border-left: 2px solid var(--os-border); margin-bottom: 3px; color: var(--os-muted); }
+    .log-entry.err { border-left-color: #ef4444; color: #fca5a5; }
+    .log-entry.ok  { border-left-color: #f59e0b; color: #fcd34d; }
+    .log-entry.inf { border-left-color: #fb923c; color: #fdba74; }
+    .log-entry .ts { color: #4b3621; margin-right: 5px; font-size: 9.5px; }
+
+    /* Log */
+    .log-box { background:#040a06; border:1px solid var(--ds-border); border-radius:var(--r-sm); padding:11px; max-height:155px; overflow-y:auto; }
+    .log-entry { font: 11px/1.5 'Courier New', monospace; padding: 2px 0 2px 8px; border-left: 2px solid var(--ds-border); margin-bottom:3px; color: var(--ds-muted); }
+    .log-entry.err { border-left-color:#f48771; color:#f48771; }
+    .log-entry.ok  { border-left-color:#34d399; color:#34d399; }
+    .log-entry.inf { border-left-color:#4fc1ff; color:#7ec8e3; }
+    .log-entry .ts { color:#1a3a26; margin-right:5px; font-size:9.5px; }
+
+    /* Right panel body */
+    .right-grid { display:grid; grid-template-columns:1fr 1fr; gap:12px; }
+
+    /* Share sections */
+    .share-box { border:1px solid var(--ds-border); border-radius:var(--r-sm); overflow:hidden; }
+    .share-box__head { padding:9px 12px; font-size:11.5px; font-weight:600; display:flex; align-items:center; gap:8px; }
+    .share-box.sent .share-box__head { background:rgba(59,130,246,.07); color:#60a5fa; border-bottom:1px solid rgba(59,130,246,.15); }
+    .share-box.recv .share-box__head { background:rgba(52,211,153,.06); color:#34d399; border-bottom:1px solid rgba(52,211,153,.12); }
+    .share-box__list { padding:8px 12px; }
+    .share-row { display:flex; align-items:flex-start; gap:9px; padding:7px 0; border-bottom:1px solid var(--ds-border); }
+    .share-row:last-child { border-bottom:none; }
+    .player-badge { width:24px; height:24px; border-radius:50%; flex-shrink:0; display:flex; align-items:center; justify-content:center; font-size:9.5px; font-weight:700; }
+    .p1 { background:rgba(59,130,246,.15); color:#60a5fa; }
+    .p2 { background:rgba(236,72,153,.15);  color:#f0abca; }
+    .share-info { flex:1; min-width:0; }
+    .share-name { font-size:10.5px; font-weight:600; color: var(--ds-text); margin-bottom:2px; }
+    .share-hash { font: 9.5px 'Courier New', monospace; color: var(--ds-muted); word-break:break-all; background: var(--ds-bg); border-radius:3px; padding:2px 5px; }
+    .share-hash.empty { color:#1f3829; font-style:italic; background:transparent; padding:0; font-family: var(--font); font-size:9.5px; }
+    .share-ts { font-size:8.5px; color:#1a3a26; margin-top:2px; }
+
+    /* History */
+    .history { grid-column:span 2; }
+    .history__top { display:flex; align-items:center; justify-content:space-between; margin-bottom:8px; }
+    .history__top h3 { font-size:12.5px; font-weight:600; color: var(--ds-text); }
+    .cnt-badge { background:rgba(0,184,122,.1); color:var(--g-bright); border:1px solid rgba(0,184,122,.16); border-radius:var(--r-full); padding:2px 9px; font-size:10px; font-weight:600; }
+    .tbl-wrap { border:1px solid var(--ds-border); border-radius:var(--r-sm); overflow:hidden; max-height:220px; overflow-y:auto; }
+    table { width:100%; border-collapse:collapse; font-size:10px; }
+    thead th { background: linear-gradient(135deg, var(--g-darker), var(--g-dark)); color:#a7f3d0; padding:7px 9px; text-align:left; font-weight:600; letter-spacing:.2px; position:sticky; top:0; z-index:1; }
+    tbody tr { border-bottom:1px solid var(--ds-border); }
+    tbody tr:last-child { border-bottom:none; }
+    tbody tr:hover { background:rgba(0,184,122,.035); }
+    tbody td { padding:6px 9px; color: var(--ds-muted); vertical-align:middle; }
+    .chip { display:inline-block; border-radius:9px; padding:2px 9px; font-size:9px; font-weight:700; text-transform:uppercase; }
+    .chip.dry      { background:rgba(249,115,22,.12); color:#fb923c; }
+    .chip.wet      { background:rgba(56,189,248,.12);  color:#38bdf8; }
+    .chip.moderate { background:rgba(52,211,153,.12);  color:#34d399; }
+    .chip.unknown  { background:rgba(107,114,128,.12); color:#9ca3af; }
+    .hash-td { font:9px 'Courier New',monospace; color:#1f3829; }
+    .live-pulse { display:inline-block; width:6px; height:6px; border-radius:50%; background:var(--g-primary); animation:pulse 1.5s infinite; margin-left:5px; vertical-align:middle; }
+
+    /* ═══════════════════════════════════
+       FOOTER
+    ═══════════════════════════════════ */
+    .footer { background: linear-gradient(135deg, var(--g-darker) 0%, var(--g-dark) 60%, var(--g-darker) 100%); color:#fff; position:relative; }
+    .footer__inner { max-width:var(--max-w); margin:0 auto; padding:2.5rem 2rem 0; }
+    .footer__row { display:flex; gap:3rem; flex-wrap:nowrap; align-items:flex-start; padding-bottom:2.25rem; border-bottom:1px solid rgba(255,255,255,.1); margin-bottom:1.25rem; }
+    .f-col          { flex:1; min-width:0; }
+    .f-col--about   { flex:1.6; max-width:400px; }
+    .f-col--logos   { flex:.9; }
+    .f-name { font-size:1rem; font-weight:700; color:#fff; margin-bottom:.9rem; line-height:1.3; }
+    .f-desc { font-size:.875rem; line-height:1.65; color:rgba(255,255,255,.75); margin-bottom:.9rem; }
+    .f-contact { display:flex; flex-direction:column; gap:.6rem; }
+    .f-contact a { font-size:.83rem; color:rgba(255,255,255,.6); text-decoration:none; transition:color .2s; }
+    .f-contact a:hover { color:var(--g-bright); }
+    .f-title { font-size:.95rem; font-weight:600; color:#fff; margin-bottom:.9rem; }
+    .logo-list { display:flex; flex-wrap:wrap; align-items:center; gap:1.25rem; margin-top:.25rem; }
+    .logo-item img { max-height:42px; width:auto; max-width:110px; object-fit:contain; filter: brightness(0) invert(1); opacity:.8; transition:opacity .2s; }
+    .logo-item img:hover { opacity:1; }
+    .f-bottom { padding-bottom:1.5rem; }
+    .f-copy { font-size:.8rem; color:rgba(255,255,255,.4); display:flex; gap:.75rem; flex-wrap:wrap; }
+    .f-copy a { color:rgba(255,255,255,.4); text-decoration:none; }
+    .f-copy a:hover { color:rgba(255,255,255,.8); text-decoration:underline; }
+
+    /* Responsive */
+    @media (max-width:960px) {
+      .dash-grid { grid-template-columns:1fr; }
+      .right-grid { grid-template-columns:1fr; }
+      .history { grid-column:1; }
+      .stats-card { display:grid; grid-template-columns:1fr 1fr; gap:1.25rem; padding:1.5rem 1.25rem; }
+      .stat__div  { display:none; }
+      .footer__row { flex-wrap:wrap; }
+    }
+    @media (max-width:640px) { .nav__links { display:none; } .nav__login { display:none; } }
+
+    ::-webkit-scrollbar            { width:5px; height:5px; }
+    ::-webkit-scrollbar-track      { background:var(--ds-bg); }
+    ::-webkit-scrollbar-thumb      { background:var(--ds-border); border-radius:3px; }
+    ::-webkit-scrollbar-thumb:hover{ background:rgba(0,184,122,.35); }
+  </style>
+</head>
+<body>
+
+<!-- ══════════════════════════
+     NAVBAR
+══════════════════════════ -->
+<nav class="nav on-hero" id="mainNav">
+  <div class="nav__inner">
+    <div class="nav__logo">
+      <a href="#" class="logo__link">
+        <img src="assets/Seal_of_Maharashtra__1__2.svg" alt="Maharashtra Seal" class="logo__seal" onerror="this.style.display='none'" />
+        <img src="assets/logo.svg" alt="MahaAgX Logo" width="150" height="50">
+      </a>
+    </div>
+    <ul class="nav__links">
+      <li><a href="#" class="nav__link active">Dashboard</a></li>
+    </ul>
+    <div class="nav__actions">
+      <div class="status-pill">
+        <span class="status-dot" id="statusDot"></span>
+        <span id="statusTxt">Disconnected</span>
+      </div>
+      <span class="reading-badge" id="readingBadge">Readings: 0</span>
+    </div>
+  </div>
+</nav>
+
+
+<!-- ══════════════════════════
+     HERO SECTION
+══════════════════════════ -->
+<section class="hero" id="heroSection">
+  <video autoplay muted loop playsinline preload="auto" class="hero__video">
+    <source src="assets/banner.mp4" type="video/mp4" />
+  </video>
+  <div class="hero__overlay"></div>
+  <div class="hero__body">
+    <div class="hero__content">
+      <h1 class="hero__title">
+        Privacy Preserving Irrigation Recommendation using
+        <span class="hero__title--accent">Secure Multi-Party Computation Protocol</span>
+      </h1>
+      <p class="hero__sub">
+        Arduino soil sensors · Privacy-preserving computation ·
+        Instant irrigation decisions powered by MahaAgX.
+      </p>
+      <button class="scroll-cta" aria-label="Scroll down"
+              onclick="document.getElementById('statsSection').scrollIntoView({behavior:'smooth'})">
+        <svg viewBox="0 0 24 24"><polyline points="6 9 12 15 18 9"/></svg>
+      </button>
+    </div>
+  </div>
+</section>
+
+
+<!-- ══════════════════════════
+     STATISTICS CARD
+══════════════════════════ -->
+<section class="stats-section" id="statsSection">
+  <div class="stats-section__inner">
+    <div class="stats-card">
+
+      <div class="stat">
+        <div class="stat__icon">
+          <svg viewBox="0 0 24 24"><ellipse cx="12" cy="5" rx="9" ry="3"/><path d="M21 12c0 1.66-4.03 3-9 3S3 13.66 3 12"/><path d="M3 5v14c0 1.66 4.03 3 9 3s9-1.34 9-3V5"/></svg>
+        </div>
+        <div class="stat__body">
+          <span class="stat__num" id="sCurrentReading">---</span>
+          <span class="stat__lbl">Current Reading</span>
+        </div>
+      </div>
+
+      <div class="stat__div"></div>
+
+      <div class="stat">
+        <div class="stat__icon">
+          <svg viewBox="0 0 24 24"><polyline points="16 18 22 12 16 6"/><polyline points="8 6 2 12 8 18"/></svg>
+        </div>
+        <div class="stat__body">
+          <span class="stat__num" id="sSoilStatus">---</span>
+          <span class="stat__lbl">Irrigation Recommendation</span>
+        </div>
+      </div>
+
+      <div class="stat__div"></div>
+
+      <div class="stat">
+        <div class="stat__icon">
+          <svg viewBox="0 0 24 24"><rect x="3" y="3" width="7" height="7"/><rect x="14" y="3" width="7" height="7"/><rect x="3" y="14" width="7" height="7"/><rect x="14" y="14" width="7" height="7"/></svg>
+        </div>
+        <div class="stat__body">
+          <span class="stat__num" id="sTotalReadings">0</span>
+          <span class="stat__lbl">Total Readings</span>
+        </div>
+      </div>
+
+      <div class="stat__div"></div>
+
+      <div class="stat">
+        <div class="stat__icon">
+          <svg viewBox="0 0 24 24"><path d="M17 8C8 10 5.9 16.17 3.82 19.93c-.3.5.73.4.77.1C6 12 11 9.5 19 9l-2-1z"/><path d="M3.82 19.93C5.88 14.4 9.5 11 17 8"/></svg>
+        </div>
+        <div class="stat__body">
+          <span class="stat__num">2-Party</span>
+          <span class="stat__lbl">MPC Protocol</span>
+        </div>
+      </div>
+
+    </div>
+  </div>
+</section>
+
+
+<!-- ══════════════════════════
+     DASHBOARD (dark)
+══════════════════════════ -->
+<section class="dash-section">
+  <div class="dash-section__inner">
+
+    <div class="dash-header">
+      <h2 class="dash-title">Sensor Dashboard</h2>
+      <p class="dash-sub">Live ESP32 soil moisture readings via Bluetooth Serial (rfcomm0) with MPC-based privacy-preserving classification</p>
+    </div>
+
+    <!-- Notice: Bluetooth Serial mode -->
+    <div class="notice">
+      📡 <strong>Bluetooth Mode:</strong>&nbsp;
+      Pair the ESP32 ("SoilSensor") with your PC first, then bind it with
+      <code>sudo rfcomm bind 0 &lt;ESP32_MAC&gt;</code> to get <code>/dev/rfcomm0</code>.
+      Select that port below and click "Connect". Data streams wirelessly at 1 s intervals — calibration values come from config.
+    </div>
+
+    <!-- Port selector row (NEW) -->
+    <div class="port-row">
+      <span class="port-lbl">Serial Port:</span>
+      <select class="port-select" id="portSelect">
+        <option value="">— select port —</option>
+      </select>
+      <button class="btn-refresh-ports" id="refreshPortsBtn">🔄 Refresh</button>
+    </div>
+
+    <div class="ctrl-row">
+      <button class="btn btn-start" id="startBtn">📡 Connect Bluetooth</button>
+      <button class="btn btn-stop"  id="stopBtn"  disabled>■ Disconnect</button>
+      <button class="btn btn-init"  id="initBtn">⚡ Init Calibration</button>
+    </div>
+
+    <div class="dash-grid">
+
+      <!-- ── 1st LEFT PANEL ── -->
+      <div class="panel">
+        <div class="panel__head">
+          <div class="panel__head-icon">📊</div>
+          <h2>Farmer Dashboard</h2>
+        </div>
+        <div class="panel__body">
+          <div class="data-grid">
+            <div class="dc" id="dcReading">
+              <div class="dc__lbl">Soil Reading (Avg)</div>
+              <div class="dc__val" id="readingVal">---</div>
+            </div>
+            <div class="dc" id="dcMPC">
+              <div class="dc__lbl">Irrigation Recommendation</div>
+              <div class="dc__val sm" id="mpcVal">---</div>
+            </div>
+          </div>
+
+          <div class="graph-wrap">
+            <div class="graph-top">
+              <h3>📈 Real-time Sensor Data</h3>
+              <div class="legend">
+                <div class="leg"><div class="leg__dot dry"></div> Dry</div>
+                <div class="leg"><div class="leg__dot moderate"></div> Moderate</div>
+                <div class="leg"><div class="leg__dot wet"></div> Wet</div>
+              </div>
+            </div>
+            <canvas id="sensorGraph"></canvas>
+          </div>
+
+          <div class="log-box">
+            <div class="log-lbl">📋 Activity Log</div>
+            <div id="logEntries"></div>
+          </div>
+        </div>
+      </div>
+
+      <!-- ── 1st RIGHT PANEL ── -->
+      <div class="panel2">
+        <div class="panel2__head" id="panel2right_head">
+          <div class="panel2__head-icon">📊</div>
+          <h2>Model Provider Dashboard</h2>
+        </div>
+        <div class="panel2__body">
+          <div class="data-grid">
+            <div class="dc2">
+              <div class="dc2__lbl">Decision Boundary 1</div>
+              <div class="dc2__val" id="threshold1">2560</div>
+            </div>
+            <div class="dc2">
+              <div class="dc2__lbl">Decision Boundary 2</div>
+              <div class="dc2__val sm" id="threshold2">1100</div>
+            </div>
+          </div>
+
+          <div class="graph-wrap">
+            <img src="assets/graphred.png" alt="MahaAgX Logo" width="600" height="300">
+          </div>
+          <div class="log-box2">
+            <div class="log-lbl">📋 Activity Log</div>
+            <div id="logEntries2"></div>
+          </div>
+        </div>
+      </div>
+
+      <!-- ── 2nd Left PANEL ── -->
+      <div class="panel">
+        <div class="panel__head">
+          <div class="panel__head-icon">📊</div>
+          <h2>What the farmer sees</h2>
+        </div>
+        <div class="panel__body">
+          <div class="data-grid">
+            <div class="dc">
+              <div class="dc__lbl">Share of Decision Boundary 1</div>
+              <div class="dc__val" id="threshold1_secret">---</div>
+            </div>
+            <div class="dc">
+              <div class="dc__lbl">Share of Decision Boundary 2</div>
+              <div class="dc__val" id="threshold2_secret">---</div>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <!-- ── 2nd RIGHT PANEL ── -->
+      <div class="panel2" id="panel4">
+        <div class="panel2__head">
+          <div class="panel2__head-icon">📊</div>
+          <h2>What the Model Provider sees</h2>
+        </div>
+        <div class="panel2__body">
+          <div class="data-grid">
+            <div class="dc2">
+              <div class="dc2__lbl">Soil Reading Secret</div>
+              <div class="dc2__val" id="reading_share">---</div>
+            </div>
+            <div class="dc2">
+              <div class="dc2__lbl">Irrigation Recommendation Secret (output_share)</div>
+              <div class="dc2__val sm" id="mpc_share">---</div>
+            </div>
+          </div>
+        </div>
+      </div>
+
+    </div><!-- /dash-grid -->
+  </div>
+</section>
+
+
+<!-- ══════════════════════════
+     FOOTER
+══════════════════════════ -->
+<footer class="footer">
+  <div class="footer__inner">
+    <div class="footer__row">
+      <div class="f-col f-col--about">
+        <h3 class="f-name">Centre of Data for Public Good (CDPG)</h3>
+        <p class="f-desc">
+          CDPG is a pioneering initiative dedicated to harnessing the power of data and technology for meaningful societal impact. Grounded in translational research and real-world impact, CDPG has developed software platforms, AI/ML models, innovative applications, and data policies that unlock the potential of data for the public good.
+        </p>
+        <div class="f-contact">
+          <a href="https://dataforpublicgood.org.in/" target="_blank" rel="noopener">https://dataforpublicgood.org.in/</a>
+        </div>
+      </div>
+      <div class="f-col f-col--logos">
+        <h4 class="f-title">Partners</h4>
+        <div class="logo-list">
+          <a href="https://www.worldbank.org/" target="_blank" class="logo-item"><img src="assets/WorldBank-logo.png" alt="World Bank" /></a>
+          <a href="https://iisc.ac.in/" target="_blank" class="logo-item"><img src="assets/IISC-Logo-White-e1666353947123_2.svg" alt="IISc" /></a>
+          <a href="https://dataforpublicgood.org.in/" target="_blank" class="logo-item"><img src="assets/cdpg.svg" alt="CDPG" /></a>
+        </div>
+      </div>
+    </div>
+  </div>
+</footer>
+
+
+<!-- ══════════════════════════
+     JAVASCRIPT
+══════════════════════════ -->
+<script>
+  /* ── Navbar scroll ── */
+  const nav  = document.getElementById('mainNav');
+  const hero = document.getElementById('heroSection');
+  function syncNav() {
+    const heroEnd = hero.getBoundingClientRect().bottom;
+    nav.classList.toggle('on-hero',  heroEnd > 0);
+    nav.classList.toggle('scrolled', heroEnd <= 0);
+  }
+  window.addEventListener('scroll', syncNav, { passive:true });
+  syncNav();
+
+  /* ── DOM refs ── */
+  const startBtn        = document.getElementById('startBtn');
+  const stopBtn         = document.getElementById('stopBtn');
+  const initBtn         = document.getElementById('initBtn');
+  const portSelect      = document.getElementById('portSelect');
+  const refreshPortsBtn = document.getElementById('refreshPortsBtn');
+  const statusDot       = document.getElementById('statusDot');
+  const statusTxt       = document.getElementById('statusTxt');
+  const readingBadge    = document.getElementById('readingBadge');
+  const readingVal      = document.getElementById('readingVal');
+  const mpcVal          = document.getElementById('mpcVal');
+  const mpc_share       = document.getElementById('mpc_share');
+  const reading_share   = document.getElementById('reading_share');
+  const dcMPC           = document.getElementById('dcMPC');
+  const logEntries      = document.getElementById('logEntries');
+  const histBody        = document.getElementById('histBody');
+  const histCount       = document.getElementById('histCount');
+  const sCurrentReading = document.getElementById('sCurrentReading');
+  const sSoilStatus     = document.getElementById('sSoilStatus');
+  const sTotalReadings  = document.getElementById('sTotalReadings');
+  const threshold1      = document.getElementById('threshold1');
+  const threshold2      = document.getElementById('threshold2');
+
+  /* ── Canvas ── */
+  const canvas = document.getElementById('sensorGraph');
+  const ctx    = canvas.getContext('2d');
+  function resizeCanvas() { canvas.width = canvas.offsetWidth; canvas.height = 190; drawGraph(); }
+
+  /* ── State ── */
+  let isConnected = false;
+  let espPollTimer = null;
+  let totalReadings = 0;
+  let readingHistory = [], graphData = [], graphColors = [];
+  let currentState = 'default';
+  const WIN = 20, MAX_PTS = 200;
+  const COLORS = { dry:'#f97316', moderate:'#22c55e', wet:'#38bdf8', default:'#4fc1ff' };
+
+  /* ── Status ── */
+  function setStatus(cls, txt) {
+    statusDot.className = 'status-dot' + (cls ? ' ' + cls : '');
+    statusTxt.textContent = txt;
+  }
+
+  /* ── Log ── */
+  function log(msg, type='inf') {
+    const ts  = new Date().toLocaleTimeString();
+    const div = document.createElement('div');
+    div.className = `log-entry ${type}`;
+    div.innerHTML = `<span class="ts">[${ts}]</span>${msg}`;
+    logEntries.insertBefore(div, logEntries.firstChild);
+    while (logEntries.children.length > 60) logEntries.removeChild(logEntries.lastChild);
+  }
+
+  /* ── Rolling average ── */
+  function rollingAvg(v) {
+    readingHistory.push(v);
+    if (readingHistory.length > WIN) readingHistory.shift();
+    return Math.round(readingHistory.reduce((a,b)=>a+b,0)/readingHistory.length);
+  }
+
+  /* ── Graph ── */
+  function addGraphPoint(val) {
+    graphData.push(val);
+    graphColors.push(currentState);
+    if (graphData.length > MAX_PTS) { graphData.shift(); graphColors.shift(); }
+    drawGraph();
+  }
+
+  function drawGraph() {
+    const w = canvas.width, h = canvas.height, p = 36;
+    ctx.fillStyle = '#040a06';
+    ctx.fillRect(0,0,w,h);
+    if (graphData.length < 2) return;
+    const mn = Math.min(...graphData), mx = Math.max(...graphData);
+    const rng = mx - mn || 1;
+    ctx.strokeStyle='#1a3020'; ctx.lineWidth=1; ctx.setLineDash([3,4]);
+    for(let i=0;i<=4;i++){
+      const y = p + (h-2*p)*(i/4);
+      ctx.beginPath(); ctx.moveTo(p,y); ctx.lineTo(w-p,y); ctx.stroke();
+      ctx.fillStyle='#355a45'; ctx.font='9px monospace'; ctx.textAlign='right';
+      ctx.fillText(Math.round(mx-(rng*i/4)), p-3, y+3);
+    }
+    ctx.setLineDash([]);
+    const sp = (w-2*p)/(MAX_PTS-1);
+    for(let i=0;i<graphData.length-1;i++){
+      const x1=p+i*sp, x2=p+(i+1)*sp;
+      const y1=p+(h-2*p)*(1-(graphData[i]-mn)/rng);
+      const y2=p+(h-2*p)*(1-(graphData[i+1]-mn)/rng);
+      ctx.strokeStyle = COLORS[graphColors[i]]||COLORS.default;
+      ctx.lineWidth=2;
+      ctx.beginPath(); ctx.moveTo(x1,y1); ctx.lineTo(x2,y2); ctx.stroke();
+    }
+    ctx.fillStyle='#355a45'; ctx.font='10px sans-serif'; ctx.textAlign='center';
+    ctx.fillText('Time →', w/2, h-4);
+  }
+
+  /* ── MPC display ── */
+  function showMPCResult(result) {
+    log(`MPC result: ${result}`, 'inf');
+    const vals = result.trim().split(/\s+/).map(v=>parseInt(v));
+    if (vals.length!==3){ log('Invalid MPC format','err'); return; }
+    const [dry,mod,wet] = vals;
+    dcMPC.classList.remove('dry','moderate','wet');
+    if (dry===1) {
+      currentState='dry'; mpcVal.textContent='🏜️ Irrigate';
+      dcMPC.classList.add('dry'); sSoilStatus.textContent='DRY';
+      log('Soil DRY — irrigation recommended','ok');
+    } else if (mod===1) {
+      currentState='moderate'; mpcVal.textContent='🌿 Irrigate, If required';
+      dcMPC.classList.add('moderate'); sSoilStatus.textContent='MODERATE';
+      log('Soil MODERATE','ok');
+    } else if (wet===1) {
+      currentState='wet'; mpcVal.textContent='💧 No irrigation';
+      dcMPC.classList.add('wet'); sSoilStatus.textContent='WET';
+      log('Soil WET — no irrigation needed','ok');
+    } else {
+      currentState='default'; mpcVal.textContent='❓ Unknown';
+      sSoilStatus.textContent='UNKNOWN'; log('Soil UNKNOWN','err');
+    }
+  }
+
+  /* ── Format long integers for UI ── */
+  function formatBigInt(val) {
+    if (!val) return '—';
+    const s = val.toString();
+    return s.length > 15 ? s.substring(0, 6) + '...' + s.slice(-6) : s;
+  }
+
+  /* ── Hash display helper ── */
+  function setHash(el, val) {
+    if (!el) return;
+    const empty = !val || val==='N/A';
+    el.textContent = empty ? '—' : val;
+    el.classList.toggle('empty', empty);
+  }
+
+  /* ── Share-state polling ── */
+  async function pollShares() {
+    try {
+      const r = await fetch('http://localhost:3000/share-state');
+      if (!r.ok) return;
+      const { current: c, history: h } = await r.json();
+
+      if (c.mpcResult) {
+        showMPCResult(c.mpcResult);
+        if (isConnected) setStatus('ok', 'Connected · BT');
+        // Log the decoded plaintext and output_share together
+        if (c.mpcPlaintext !== undefined)
+          log(`MPC plaintext (decoded): [${c.mpcPlaintext}]`, 'ok');
+      }
+
+      // ── "What the farmer sees" — masked inputs of the two calibration secrets ──
+      if (c.value1Masked) {
+        const t1s = document.getElementById('threshold1_secret');
+        if (t1s) { t1s.textContent = formatBigInt(c.value1Masked); t1s.title = c.value1Masked; }
+      }
+      if (c.value2Masked) {
+        const t2s = document.getElementById('threshold2_secret');
+        if (t2s) { t2s.textContent = formatBigInt(c.value2Masked); t2s.title = c.value2Masked; }
+      }
+
+      // ── "What the Model Provider sees" ──
+      // Soil Reading Secret  = masked_input from create-secret
+      // Irrigation Recommendation Secret = output_share from ephemeral execute
+      if (c.readingMasked) {
+        reading_share.textContent = formatBigInt(c.readingMasked);
+        reading_share.title = c.readingMasked;
+      }
+      if (c.mpcResultMasked) {
+        mpc_share.textContent = formatBigInt(c.mpcResultMasked);
+        mpc_share.title = c.mpcResultMasked;
+      }
+
+      if (histCount) histCount.textContent = `${h.length} records`;
+      if (!histBody || !h.length) return;
+      histBody.innerHTML='';
+      [...h].reverse().forEach(row=>{
+        const r2   = resultChip(row.mpcResult);
+        const time = new Date(row.timestamp).toLocaleTimeString();
+        const tr   = document.createElement('tr');
+        tr.innerHTML=`
+          <td>${time}</td>
+          <td class="hash-td">${row.player1Sent||'—'}</td>
+          <td class="hash-td">${row.player2Sent||'—'}</td>
+          <td class="hash-td">${row.player1Received||'—'}</td>
+          <td class="hash-td">${row.player2Received||'—'}</td>
+          <td><span class="chip ${r2.cls}">${r2.lbl}</span></td>
+        `;
+        histBody.appendChild(tr);
+      });
+    } catch {}
+  }
+
+  function resultChip(raw) {
+    if (!raw) return {cls:'unknown',lbl:'—'};
+    const v = raw.trim().split(/\s+/).map(Number);
+    if (v[0]===1) return {cls:'dry',lbl:'Dry'};
+    if (v[1]===1) return {cls:'moderate',lbl:'Moderate'};
+    if (v[2]===1) return {cls:'wet',lbl:'Wet'};
+    return {cls:'unknown',lbl:'Unknown'};
+  }
+  setInterval(pollShares, 2000);
+  pollShares();
+
+  /* ══════════════════════════════════════
+     PORT DISCOVERY — GET /serial-ports
+  ══════════════════════════════════════ */
+  async function loadPorts() {
+    try {
+      const r = await fetch('http://localhost:3000/serial-ports');
+      const d = await r.json();
+      if (!d.success) throw new Error(d.error);
+
+      const prev = portSelect.value;
+      portSelect.innerHTML = '<option value="">— select port —</option>';
+
+      d.ports.forEach(p => {
+        const opt = document.createElement('option');
+        opt.value = p.path;
+        // Show friendly name if available (e.g. "USB Serial" on macOS/Windows)
+        const label = p.friendlyName ? `${p.path} · ${p.friendlyName}` : p.path;
+        opt.textContent = label;
+        portSelect.appendChild(opt);
+      });
+
+      // Re-select the previously chosen port if still available
+      if (prev) portSelect.value = prev;
+
+      // Auto-select if only one port found
+      if (d.ports.length === 1) portSelect.value = d.ports[0].path;
+
+      log(`Found ${d.ports.length} serial port(s)`, 'inf');
+    } catch (e) {
+      log(`⚠️ Could not list ports: ${e.message}`, 'err');
+    }
+  }
+
+  refreshPortsBtn.addEventListener('click', loadPorts);
+
+  /* ══════════════════════════════════════
+     CONNECT — POST /start-polling
+     Passes the selected port path to the server.
+  ══════════════════════════════════════ */
+  startBtn.addEventListener('click', async () => {
+    const portPath = portSelect.value;
+    if (!portPath) {
+      log('⚠️ Please select a serial port first', 'err');
+      return;
+    }
+
+    startBtn.disabled = true;
+    startBtn.textContent = 'Connecting…';
+
+    try {
+      const r = await fetch('http://localhost:3000/start-polling', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ port: portPath })
+      });
+      const d = await r.json();
+      if (!d.success) throw new Error(d.error || d.message || 'Server error');
+
+      isConnected = true;
+      setStatus('ok', 'Connected · BT');
+      log(`📡 Bluetooth connected on ${portPath}`, 'ok');
+      stopBtn.disabled = false;
+      startBtn.textContent = '📡 Connect Bluetooth';
+
+      // Poll /esp-data every 600 ms to refresh the graph + readings display
+      espPollTimer = setInterval(fetchESPDisplay, 600);
+      fetchESPDisplay();
+
+    } catch (e) {
+      log(`❌ Could not connect: ${e.message}`, 'err');
+      setStatus('', 'Disconnected');
+      startBtn.disabled = false;
+      startBtn.textContent = '📡 Connect Bluetooth';
+    }
+  });
+
+  /* ══════════════════════════════════════
+     DISCONNECT — POST /stop-polling
+  ══════════════════════════════════════ */
+  stopBtn.addEventListener('click', async () => {
+    clearInterval(espPollTimer);
+    isConnected = false;
+    try {
+      await fetch('http://localhost:3000/stop-polling', { method: 'POST' });
+    } catch {}
+    setStatus('', 'Disconnected');
+    log('📡 Bluetooth disconnected', 'inf');
+    startBtn.disabled = false;
+    stopBtn.disabled = true;
+    startBtn.textContent = '📡 Connect Bluetooth';
+  });
+
+  /* ══════════════════════════════════════
+     INIT CALIBRATION
+  ══════════════════════════════════════ */
+  initBtn.addEventListener('click', async () => {
+    initBtn.disabled = true;
+    initBtn.textContent = 'Initializing…';
+    try {
+      const r = await fetch('http://localhost:3000/initialize-calibration', { method: 'POST' });
+      const d = await r.json();
+      if (d.success) {
+        log('✅ Calibration initialized', 'ok');
+        // Immediately populate the "farmer sees" boundary panels
+        if (d.value1Masked) {
+          log(`Dry Boundary Mask: ${d.value1Masked.substring(0,12)}…`, 'inf');
+          const t1s = document.getElementById('threshold1_secret');
+          if (t1s) { t1s.textContent = formatBigInt(d.value1Masked); t1s.title = d.value1Masked; }
+        }
+        if (d.value2Masked) {
+          log(`Wet Boundary Mask: ${d.value2Masked.substring(0,12)}…`, 'inf');
+          const t2s = document.getElementById('threshold2_secret');
+          if (t2s) { t2s.textContent = formatBigInt(d.value2Masked); t2s.title = d.value2Masked; }
+        }
+      } else {
+        log(`❌ Calibration failed: ${d.error}`, 'err');
+      }
+    } catch (e) {
+      log(`❌ Init error: ${e.message}`, 'err');
+    } finally {
+      initBtn.disabled = false;
+      initBtn.textContent = '⚡ Init Calibration';
+    }
+  });
+
+  /* ══════════════════════════════════════
+     DISPLAY POLL — GET /esp-data
+     Fast refresh for reading + graph + all four masked-input panels.
+     MPC classification result arrives via pollShares() from /share-state.
+  ══════════════════════════════════════ */
+  async function fetchESPDisplay() {
+    try {
+      const r = await fetch('http://localhost:3000/esp-data');
+      if (!r.ok) return;
+      const d = await r.json();
+
+      if (!d.polling) return;
+      if (d.reading === null) return;
+
+      const avg = rollingAvg(d.reading);
+
+      readingVal.textContent      = avg;
+      sCurrentReading.textContent = avg;
+
+      // Decision boundary values come from the hardcoded config — not the serial stream.
+
+      // ── "What the farmer sees" panel ──
+      // Shows the masked inputs of the two calibration secrets (decision boundaries)
+      if (d.value1Masked) {
+        const t1s = document.getElementById('threshold1_secret');
+        if (t1s) { t1s.textContent = formatBigInt(d.value1Masked); t1s.title = d.value1Masked; }
+      }
+      if (d.value2Masked) {
+        const t2s = document.getElementById('threshold2_secret');
+        if (t2s) { t2s.textContent = formatBigInt(d.value2Masked); t2s.title = d.value2Masked; }
+      }
+
+      // ── "What the Model Provider sees" panel ──
+      // Soil Reading Secret = masked input of the sensor reading
+      if (d.readingMasked) {
+        reading_share.textContent = formatBigInt(d.readingMasked);
+        reading_share.title = d.readingMasked;
+      }
+      // Irrigation Recommendation Secret = masked input of the MPC result
+      if (d.mpcResultMasked) {
+        mpc_share.textContent = formatBigInt(d.mpcResultMasked);
+        mpc_share.title = d.mpcResultMasked;
+      }
+
+      totalReadings++;
+      readingBadge.textContent   = `Readings: ${totalReadings}`;
+      sTotalReadings.textContent = totalReadings;
+      addGraphPoint(avg);
+
+      log(
+        `BT → raw=${d.reading} | ` +
+        `readingMask=${d.readingMasked ? d.readingMasked.substring(0,8)+'…' : 'pending'} | ` +
+        `outputShare=${d.mpcResultMasked ? d.mpcResultMasked.substring(0,8)+'…' : 'pending'}`,
+        'inf'
+      );
+      setStatus('busy', 'MPC running…');
+
+    } catch (e) {
+      log(`⚠️ Display poll error: ${e.message}`, 'err');
+    }
+  }
+
+  /* ── Init ── */
+  log('Ready. Pair ESP32 ("SoilSensor") with your PC, bind rfcomm, select the port, then click "Connect Bluetooth".', 'inf');
+  loadPorts(); // auto-populate on page load
+  window.addEventListener('resize', resizeCanvas);
+  resizeCanvas();
+</script>
+</body>
+</html>
