@@ -1,0 +1,49 @@
+# Cosine Similarity Computation for Fingerprint Embeddings
+# Computes dot product and magnitude squares for two 512-element fingerprint arrays
+# Usage: Run with MP-SPDZ locally for testing
+# Input: Read from Player-Data/Input-P0-0 (fingerprint1) and Input-P1-0 (fingerprint2)
+#        Each file should contain 512 space-separated or newline-separated float values
+
+# Read fingerprint1 from Party 0's input file (512 float values)
+# Use list comprehension to get proper sfix objects
+fingerprint1 = [sfix.get_input_from(0) for i in range(512)]
+
+# Read fingerprint2 from Party 1's input file (512 float values)
+# Use list comprehension to get proper sfix objects
+fingerprint2 = [sfix.get_input_from(1) for i in range(512)]
+
+# # Compute dot product using manual accumulation
+# dot_prod = sfix(0)
+# for i in range(512):
+#     dot_prod = dot_prod + fingerprint1[i] * fingerprint2[i]
+
+dot_prod = sfix.dot_product(fingerprint1, fingerprint2, res_params=None)
+
+
+# Compute magnitude squared of fingerprint1: sum(fingerprint1[i]^2)
+magnitude1_squared = sfix(0)
+for i in range(512):
+    magnitude1_squared = magnitude1_squared + fingerprint1[i] * fingerprint1[i]
+
+# Compute magnitude squared of fingerprint2: sum(fingerprint2[i]^2)
+magnitude2_squared = sfix(0)
+for i in range(512):
+    magnitude2_squared = magnitude2_squared + fingerprint2[i] * fingerprint2[i]
+
+# Compute cosine similarity using squared magnitudes
+# cosine_similarity^2 = dot_product^2 / (magnitude1_squared * magnitude2_squared)
+dot_prod_squared = dot_prod * dot_prod
+denominator_squared = magnitude1_squared * magnitude2_squared
+cosine_similarity_squared = dot_prod_squared / denominator_squared
+
+# Reveal results
+dot_product_revealed = dot_prod.reveal()
+magnitude1_sq_revealed = magnitude1_squared.reveal()
+magnitude2_sq_revealed = magnitude2_squared.reveal()
+cosine_sim_sq_revealed = cosine_similarity_squared.reveal()
+
+print_ln('Dot product: %s', dot_product_revealed)
+print_ln('Magnitude1 squared: %s', magnitude1_sq_revealed)
+print_ln('Magnitude2 squared: %s', magnitude2_sq_revealed)
+print_ln('Cosine Similarity Squared: %s', cosine_sim_sq_revealed)
+

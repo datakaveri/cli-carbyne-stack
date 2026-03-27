@@ -1,0 +1,50 @@
+# Prologue to read in the inputs
+port = regint(10000)
+listen(port)
+socket_id = regint()
+acceptclientconnection(socket_id, port)
+
+# Read 1024 integer values (scaled embeddings)
+v_sint = sint.read_from_socket(socket_id, 1024)
+
+# Fixed-point scale (must match upload script)
+SCALE = 1000000
+
+# Split into two fingerprint arrays and SCALE DOWN
+fingerprint1 = [sfix(v_sint[i]) / SCALE for i in range(512)]
+fingerprint2 = [sfix(v_sint[i + 512]) / SCALE for i in range(512)]
+
+# Compute dot product
+dot_prod = sfix(0)
+for i in range(512):
+    dot_prod += fingerprint1[i] * fingerprint2[i]
+
+# Compute magnitude squared
+magnitude1_squared = sfix(0)
+for i in range(512):
+    magnitude1_squared += fingerprint1[i] * fingerprint1[i]
+
+magnitude2_squared = sfix(0)
+for i in range(512):
+    magnitude2_squared += fingerprint2[i] * fingerprint2[i]
+
+denominator_squared = magnitude1_squared * magnitude2_squared
+
+# cosine similarity squared
+cosine_similarity_squared = (dot_prod * dot_prod) / denominator_squared
+
+flag = cfix(0)
+
+flag = cosine_similarity_squared.reveal()
+# if cosine_similarity_squared.reveal() < cfix(0.3):
+#     flag = sint(1)
+
+# Return results
+# resp = Array(4, sfix)
+# resp[0] = dot_prod
+# resp[1] = magnitude1_squared
+# resp[2] = magnitude2_squared
+# resp[3] = cosine_similarity_squared
+# resp[4] = flag
+
+cfix.write_to_socket(socket_id, flag)
